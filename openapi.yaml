@@ -1,0 +1,470 @@
+openapi: 3.0.3
+info:
+  title: Dokumen API WhatsAuth - OpenAPI 3.0
+  description: >-
+    Penjelasan tata cara pemakaian API dari Whatsauth
+  termsOfService: https://wa.my.id
+  contact:
+    email: awangga@gmail.com
+  license:
+    name: Buat dulu webhook untuk menerima dan mengirim pesan
+    url: https://github.com/whatsauth/webhook
+  version: 1.0.11
+externalDocs:
+  description: Pendaftaran Token Whatsauth
+  url: https://wa.my.id
+servers:
+  - url: https://api.wa.my.id/api
+  - url: https://cloud.wa.my.id/api
+  - url: https://apk.fly.dev/api
+tags:
+  - name: signup
+    description: Melakukan pendaftaran atau refresh token disertai URL dan Secret WebHook
+    externalDocs:
+      description: Contoh Kode WebHook
+      url: https://github.com/whatsauth/webhook
+  - name: device
+    description: Set whatsapp yg digunakan
+    externalDocs:
+      description: Tata cara input kode
+      url: https://faq.whatsapp.com/1324084875126592
+  - name: message
+    description: Mengirim pesan ke tujuan
+    externalDocs:
+      description: Contoh Kode Program
+      url: https://github.com/whatsauth/webhook/blob/09c999be72e25660395f27c879456938a57561d1/function.go#L36C9-L36C9
+  - name: whatsauth
+    description: Get Token and Authorize
+paths:
+  /signup:
+    post:
+      tags:
+        - signup
+      summary: Pendaftaran Baru atau Refres Access Token
+      description: Melakukan pendaftaran atau refresh token dengan input URL dan Secret WebHook. Balasan berupa Token yang baru yang berlaku selama 30 hari
+      operationId: signUpNewUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebHook'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAccount'
+        '405':
+          description: Invalid input
+      security:
+        - token:
+            - write:apiKey
+            - read:apiKey
+  /device/{token}:
+    get:
+      tags:
+        - device
+      summary: Add device Whatsapp
+      description: Menambahkan wa user ke server untuk dipakai oleh api dengan memasukkan code dari respon server
+      operationId: getDevice
+      parameters:
+        - in: path
+          name: token
+          schema:
+            type: string
+          required: true
+          description: Token yang diberikan kepada user
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceResponse'
+        '400':
+          description: Invalid status value
+  /numbers/isonwa:
+    post:
+      tags:
+        - device
+      summary: Cek apakan nomor sudah terdaftar di Whatsapp atau belum
+      description: Pengecekan daftar nomor yang akan di cek apakah ada di whatsapp atau belum
+      operationId: isOnWhatsApp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhoneList'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WaList'
+        '400':
+          description: Invalid status value
+      security:
+        - token:
+            - write:apiKey
+            - read:apiKey
+  /v2/send/message/text:
+    post:
+      tags:
+        - message
+      summary: Kirim pesan teks
+      description: Mengirimkan pesan teks kepada perorangan atau group
+      operationId: sendMessageText
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TextMessage'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TextMessageResponse'
+        '503':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+      security:
+        - token:
+            - write:apiKey
+            - read:apiKey
+  /send/message/image:
+    post:
+      tags:
+        - message
+      summary: Kirim pesan gambar
+      description: Mengirimkan pesan gambar kepada perorangan atau group
+      operationId: sendMessageImage
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageMessage'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TextMessageResponse'
+        '405':
+          description: Invalid input
+      security:
+        - token:
+            - write:apiKey
+            - read:apiKey
+  /send/message/document:
+    post:
+      tags:
+        - message
+      summary: Kirim pesan document
+      description: Mengirimkan pesan document kepada perorangan atau group
+      operationId: sendMessageDoc
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentMessage'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TextMessageResponse'
+        '405':
+          description: Invalid input
+      security:
+        - token:
+            - write:apiKey
+            - read:apiKey
+  /whatsauth/request:
+    post:
+      tags:
+        - whatsauth
+      summary: Permintaan otorisasi aplikasi
+      description: Mengirimkan token otorisasi pada user
+      operationId: whatsauthRequest
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WhatsAuth'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TextMessageResponse'
+        '405':
+          description: Invalid input
+      security:
+        - token:
+            - write:apiKey
+            - read:apiKey
+components:
+  schemas:
+    JID:
+      type: object
+      properties:
+        User:
+          type: string
+          description: The user ID
+        RawAgent:
+          type: integer
+          format: int32
+          description: The raw agent
+        Device:
+          type: integer
+          format: int32
+          description: The device ID
+        Integrator:
+          type: integer
+          format: int32
+          description: The integrator ID
+        Server:
+          type: string
+          description: The server
+      required:
+        - User
+        - RawAgent
+        - Device
+        - Integrator
+        - Server
+    VerifiedName:
+      type: object
+      properties:
+        Name:
+          type: string
+          description: The verified business name
+        Certainty:
+          type: string
+          description: The certainty of the verification
+      required:
+        - Name
+        - Certainty
+    WaList:
+      type: object
+      properties:
+        phonenumbers:
+          type: array
+          items:
+            $ref: '#/components/schemas/IsOnWhatsAppResponse'
+      required:
+        - phonenumbers
+    IsOnWhatsAppResponse:
+      type: object
+      properties:
+        Query:
+          type: string
+          description: The query string used
+        JID:
+          $ref: '#/components/schemas/JID'
+        IsIn:
+          type: boolean
+          description: Whether the phone is registered or not
+        VerifiedName:
+          $ref: '#/components/schemas/VerifiedName'
+      required:
+        - Query
+        - JID
+        - IsIn
+    WebHook:
+          type: object
+          properties:
+            url: 
+              type: string
+              example: https://webhook.site/
+            secret: 
+              type: string
+              example: isju8ekf9ke
+            readstatusoff: 
+              type: boolean
+              example: false
+            sendtyping: 
+              type: boolean
+              example: false
+    UserAccount:
+      type: object
+      properties:
+        phonenumber:
+          type: string
+          example: 6281111
+        webhook:
+          type: object
+          properties:
+            url: 
+              type: string
+              example: https://webhook.com
+            secret: 
+              type: string
+              example: isju8ekf9ke
+        token:
+          type: string
+          example: v4.public.asoiduas
+    PhoneList:
+      type: object
+      properties:
+        phoneNumbers:
+          type: array
+          items:
+            type: string
+          description: Daftar nomor telepon
+      required:
+        - phoneNumbers
+      example:
+        phoneNumbers:
+          - "08123456789"
+          - "81234567890"
+          - "628123456789"
+    TextMessage:
+      type: object
+      properties:
+        to:
+          type: string
+          example: 6281111
+        isgroup:
+          type: boolean
+          example: false
+        messages:
+          type: string
+          example: hai kak
+    ImageMessage:
+      type: object
+      properties:
+        to:
+          type: string
+          example: 6281111
+        base64image:
+          type: string
+          example: iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8/5+hnoEIwDiqkL4KAcT9GO0U4BxoAAAAAElFTkSuQmCC
+        isgroup:
+          type: boolean
+          example: false
+        caption:
+          type: string
+          example: hai kak
+    DocumentMessage:
+      type: object
+      properties:
+        to:
+          type: string
+          example: 6281111
+        base64doc:
+          type: string
+          example: JVBERi0xLjEKJcKlwrHDqwoKMSAwIG9iagogIDw8IC9UeXBlIC9DYXRhbG9nCiAgICAgL1BhZ2VzIDIgMCBSCiAgPj4KZW5kb2JqCgoyIDAgb2JqCiAgPDwgL1R5cGUgL1BhZ2VzCiAgICAgL0tpZHMgWzMgMCBSXQogICAgIC9Db3VudCAxCiAgICAgL01lZGlhQm94IFswIDAgMzAwIDE0NF0KICA+PgplbmRvYmoKCjMgMCBvYmoKICA8PCAgL1R5cGUgL1BhZ2UKICAgICAgL1BhcmVudCAyIDAgUgogICAgICAvUmVzb3VyY2VzCiAgICAgICA8PCAvRm9udAogICAgICAgICAgIDw8IC9GMQogICAgICAgICAgICAgICA8PCAvVHlwZSAvRm9udAogICAgICAgICAgICAgICAgICAvU3VidHlwZSAvVHlwZTEKICAgICAgICAgICAgICAgICAgL0Jhc2VGb250IC9UaW1lcy1Sb21hbgogICAgICAgICAgICAgICA+PgogICAgICAgICAgID4+CiAgICAgICA+PgogICAgICAvQ29udGVudHMgNCAwIFIKICA+PgplbmRvYmoKCjQgMCBvYmoKICA8PCAvTGVuZ3RoIDU1ID4+CnN0cmVhbQogIEJUCiAgICAvRjEgMTggVGYKICAgIDAgMCBUZAogICAgKEhlbGxvIFdvcmxkKSBUagogIEVUCmVuZHN0cmVhbQplbmRvYmoKCnhyZWYKMCA1CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxOCAwMDAwMCBuIAowMDAwMDAwMDc3IDAwMDAwIG4gCjAwMDAwMDAxNzggMDAwMDAgbiAKMDAwMDAwMDQ1NyAwMDAwMCBuIAp0cmFpbGVyCiAgPDwgIC9Sb290IDEgMCBSCiAgICAgIC9TaXplIDUKICA+PgpzdGFydHhyZWYKNTY1CiUlRU9GCg==
+        filename:
+          type: string
+          example: filename.pdf
+        isgroup:
+          type: boolean
+          example: false
+        caption:
+          type: string
+          example: hai kak
+    WhatsAuth:
+      type: object
+      properties:
+        uuid:
+          type: string
+          example: isodjaoidsjaoid
+        phonenumber:
+          type: string
+          example: 6281212
+        delay:
+          type: integer
+          example: 2
+    ErrorMessage:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Nomor tidak terdaftar di whatsapp
+    TextMessageResponse:
+      type: object
+      properties:
+        Timestamp:
+          type: string
+          example: 2024-08-02T06:34:58Z
+        ID:
+          type: string
+          example: 3EB0B5C35133EC28D4EA1B
+        ServerID:
+          type: integer
+          example: 0
+        DebugTimings:
+                    type: object
+                    properties:
+                      Queue:
+                        type: integer
+                        example: 480
+                      Marshal:
+                        type: integer
+                        example: 11410
+                      GetParticipants:
+                        type: integer
+                        example: 0
+                      GetDevices:
+                        type: integer
+                        example: 227151959
+                      GroupEncrypt:
+                        type: integer
+                        example: 0
+                      PeerEncrypt:
+                        type: integer
+                        example: 31024016
+                      Send:
+                        type: integer
+                        example: 98170
+                      Resp:
+                        type: integer
+                        example: 234692326
+                      Retry:
+                        type: integer
+                        example: 0
+    DeviceResponse:
+      type: object
+      properties:
+        phonenumber:
+          type: string
+          example: 628888888
+        status:
+          type: boolean
+          example: false
+        code:
+          type: string
+          example: RGCF-L1LH
+        message:
+          type: string
+          example: Pair Code Device
+  requestBodies:
+    TextMessageReq:
+      description: Kirim Pesan teks
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TextMessage'
+    TextMessageResp:
+      description: Respon dari request
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/TextMessageResponse'
+  securitySchemes:
+    token:
+      type: apiKey
+      name: token
+      in: header
