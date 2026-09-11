@@ -429,6 +429,28 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /proyekblok/saya:
+    get:
+      tags:
+        - proyekblok
+      summary: Proyek blok milik pemegang token
+      description: Mengembalikan proyek yang dibimbing kalau nomor WhatsApp di token adalah dosen yang NIP-nya sudah terisi, selain itu proyek yang diikuti sebagai anggota beserta NIM pemilik nomor. Pada peran mahasiswa, nomor WhatsApp anggota lain dikosongkan. Dosen yang NIP-nya belum diisi mendapat peran dosen dengan daftar kosong dan tanpa nip. Fungsi domain yang sama dipakai perintah WhatsApp "daftar proyek saya".
+      operationId: proyekBlokSaya
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProyekSaya'
+        '401':
+          description: Header Authorization kosong, token kosong, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /proyekblok/{id}:
     get:
       tags:
@@ -1228,6 +1250,26 @@ components:
           type: string
           description: Nomor WhatsApp anggota - dipakai untuk WhatsAuth dan notifikasi, sekaligus jadi bukti kepemilikan NIM di GET /mahasiswa/{nim}/nilai
           example: "6281234567890"
+    ProyekSaya:
+      description: Proyek milik pemegang token - yang dibimbing (dosen) atau yang diikuti (mahasiswa).
+      type: object
+      properties:
+        peran:
+          type: string
+          enum: [dosen, mahasiswa]
+          example: mahasiswa
+        nip:
+          type: string
+          description: Diisi hanya untuk dosen yang NIP-nya sudah terdaftar
+          example: "198501012010011001"
+        nim:
+          type: string
+          description: NIM pemilik nomor, diisi hanya untuk peran mahasiswa
+          example: "2026001"
+        proyekblok:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProyekBlok'
     PenilaianProyek:
       description: Satu baris nilai per (proyek, nim, kode_mk) - satu proyek menilai beberapa mata kuliah sekaligus lewat artefak yang berbeda, jadi satu mahasiswa punya beberapa baris dalam satu proyek.
       type: object
