@@ -19,8 +19,6 @@ externalDocs:
   description: Pendaftaran Token Whatsauth
   url: https://wa.my.id
 servers:
-  - url: https://api.wa.my.id/api
-  - url: https://cloud.wa.my.id/api
   - url: https://apk.fly.dev/api
 tags:
   - name: signup
