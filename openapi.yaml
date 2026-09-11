@@ -1,15 +1,20 @@
 openapi: 3.0.3
 info:
-  title: Dokumen API WhatsAuth - OpenAPI 3.0
+  title: Dokumen API Platform
   description: >-
-    Penjelasan tata cara pemakaian API dari Whatsauth
+    Penjelasan tata cara pemakaian API dari Whatsauth.
+
+
+    Catatan: dua route websocket di backend (`/ws/whatsauth/public` untuk QR auth,
+    `/ws/chatgpl/public` untuk chatGPL) tidak didokumentasikan di sini karena
+    OpenAPI 3.0 tidak punya skema native untuk websocket.
   termsOfService: https://wa.my.id
   contact:
     email: awangga@gmail.com
   license:
     name: Buat dulu webhook untuk menerima dan mengirim pesan
     url: https://github.com/whatsauth/webhook
-  version: 1.0.11
+  version: 1.1.0
 externalDocs:
   description: Pendaftaran Token Whatsauth
   url: https://wa.my.id
@@ -37,7 +42,379 @@ tags:
     description: Get Token and Authorize
   - name: version
     description: Cek status dan commit deployan yang sedang berjalan
+  - name: tugas
+    description: Portal Tugas - pengumpulan tugas mahasiswa dan laporan kemiripan
+  - name: kurikulum
+    description: Data referensi kurikulum - prodi, rumpun, CPL, ritme mingguan
 paths:
+  /health:
+    get:
+      tags:
+        - tugas
+      summary: Health check Portal Tugas
+      description: Mengembalikan status service dan jumlah tugas yang tersimpan
+      operationId: healthTugas
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  n_tugas:
+                    type: integer
+                    example: 3
+  /tugas:
+    get:
+      tags:
+        - tugas
+      summary: Daftar tugas
+      operationId: daftarTugas
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tugas:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TugasRingkas'
+    post:
+      tags:
+        - tugas
+      summary: Buat tugas baru
+      description: Hanya dosen yang sudah login (lihat /dosen/login) yang bisa membuat tugas
+      operationId: buatTugas
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuatTugasRequest'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    example: 66f0a1b2c3d4e5f678901234
+                  judul:
+                    type: string
+                    example: Tugas Besar Basis Data
+        '401':
+          description: Token dosen tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Validasi gagal (judul/deskripsi tidak sesuai)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /tugas/{id}:
+    get:
+      tags:
+        - tugas
+      summary: Detail tugas
+      operationId: detailTugas
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+          description: ObjectID tugas
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  judul:
+                    type: string
+                  deskripsi:
+                    type: string
+        '404':
+          description: Tugas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+  /tugas/{id}/kirim:
+    post:
+      tags:
+        - tugas
+      summary: Kumpulkan berkas tugas
+      description: Endpoint publik untuk mahasiswa mengumpulkan tugas. Body berupa multipart/form-data berisi nama, nim, dan berkas.
+      operationId: kirimTugas
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+          description: ObjectID tugas
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                nama:
+                  type: string
+                  example: Budi Santoso
+                nim:
+                  type: string
+                  example: "1301210001"
+                berkas:
+                  type: string
+                  format: binary
+              required:
+                - nama
+                - nim
+                - berkas
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kiriman_id:
+                    type: string
+                  n_kata:
+                    type: integer
+        '404':
+          description: Tugas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Nama/NIM/berkas tidak valid atau gagal diekstrak
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+  /tugas/{id}/laporan:
+    get:
+      tags:
+        - tugas
+      summary: Laporan kemiripan tugas
+      description: Hanya dosen yang sudah login yang bisa mengakses laporan kemiripan antar kiriman
+      operationId: laporanTugas
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+          description: ObjectID tugas
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaporanKemiripan'
+        '401':
+          description: Token dosen tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Tugas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /dosen/login:
+    post:
+      tags:
+        - tugas
+      summary: Login dosen Portal Tugas
+      description: Autentikasi memakai password, mengembalikan token PASETO berlaku 24 jam
+      operationId: loginDosen
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password:
+                  type: string
+              required:
+                - password
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    example: v4.public.asoiduas
+                  exp:
+                    type: string
+                    example: 2024-08-02T06:34:58Z
+        '401':
+          description: Password salah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+  /dosen/ping:
+    get:
+      tags:
+        - tugas
+      summary: Cek validitas token dosen
+      operationId: pingDosen
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  user:
+                    type: string
+                    example: dosen
+        '401':
+          description: Token dosen tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /kurikulum/prodi:
+    get:
+      tags:
+        - kurikulum
+      summary: Daftar program studi
+      operationId: daftarProdi
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  prodi:
+                    type: array
+                    items:
+                      type: object
+  /kurikulum/prodi/{prodi}/rumpun:
+    get:
+      tags:
+        - kurikulum
+      summary: Daftar rumpun matakuliah suatu prodi
+      operationId: daftarRumpun
+      parameters:
+        - in: path
+          name: prodi
+          schema:
+            type: string
+          required: true
+          description: Kode/slug program studi
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rumpun:
+                    type: array
+                    items:
+                      type: object
+  /kurikulum/seed:
+    post:
+      tags:
+        - kurikulum
+      summary: Seed data referensi kurikulum
+      description: Menulis data referensi kurikulum (prodi, rumpun, CPL, ritme mingguan) ke Mongo. Idempoten, langkah manual satu kali dipanggil operator setelah deploy - dilindungi token dosen yang sama dengan Portal Tugas.
+      operationId: seedKurikulum
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  ringkasan:
+                    type: object
+        '401':
+          description: Token dosen tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /v3/official/send/message/text:
+    post:
+      tags:
+        - message
+      summary: Kirim pesan teks (v3, nomor official)
+      description: Mengirimkan pesan teks memakai nomor official milik user yang sedang login (token di header, bukan di body)
+      operationId: sendMessageTextV3
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TextMessage'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TextMessageResponse'
+        '403':
+          description: Token tidak valid atau tidak punya akses ke nomor official
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+      security:
+        - token:
+            - write:apiKey
+            - read:apiKey
   /version:
     get:
       tags:
@@ -471,6 +848,87 @@ components:
         message:
           type: string
           example: Pair Code Device
+    DetailError:
+      description: Bentuk error khusus modul Portal Tugas & Kurikulum (beda dari ErrorMessage yang dipakai modul WhatsAuth)
+      type: object
+      properties:
+        detail:
+          type: string
+          example: Tugas tidak ditemukan
+    TugasRingkas:
+      type: object
+      properties:
+        id:
+          type: string
+        judul:
+          type: string
+        deskripsi:
+          type: string
+        n_kiriman:
+          type: integer
+    BuatTugasRequest:
+      type: object
+      properties:
+        judul:
+          type: string
+          example: Tugas Besar Basis Data
+        deskripsi:
+          type: string
+          example: Kerjakan rancangan ERD dan normalisasi
+      required:
+        - judul
+    PerKiriman:
+      type: object
+      properties:
+        id:
+          type: string
+        nama:
+          type: string
+        nim:
+          type: string
+        filename:
+          type: string
+        max_score:
+          type: number
+          nullable: true
+        pasangan_id:
+          type: string
+          nullable: true
+        pasangan_nama:
+          type: string
+        band:
+          type: string
+    Pasangan:
+      type: object
+      properties:
+        a_id:
+          type: string
+        a_nama:
+          type: string
+        b_id:
+          type: string
+        b_nama:
+          type: string
+        score:
+          type: number
+        band:
+          type: string
+    LaporanKemiripan:
+      type: object
+      properties:
+        tugas_id:
+          type: string
+        disclaimer:
+          type: string
+          example: "Skor adalah kemiripan tekstual, bukan vonis plagiat. Keputusan akhir tetap pada dosen setelah pemeriksaan manual."
+        per_kiriman:
+          type: array
+          items:
+            $ref: '#/components/schemas/PerKiriman'
+        pasangan:
+          type: array
+          items:
+            $ref: '#/components/schemas/Pasangan'
   requestBodies:
     TextMessageReq:
       description: Kirim Pesan teks
@@ -491,3 +949,8 @@ components:
       type: apiKey
       name: token
       in: header
+    dosenToken:
+      type: apiKey
+      name: token
+      in: header
+      description: Token PASETO dosen yang didapat dari POST /dosen/login
