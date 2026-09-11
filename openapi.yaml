@@ -21,8 +21,8 @@ externalDocs:
 servers:
   - url: https://apk.fly.dev/api
 tags:
-  - name: signup
-    description: Melakukan pendaftaran atau refresh token disertai URL dan Secret WebHook
+  - name: botregister
+    description: Pendaftaran nomor bot WhatsApp atau refresh token, disertai URL dan Secret WebHook. Bukan pendaftaran pengguna aplikasi - identitas orang datang dari WhatsAuth.
     externalDocs:
       description: Contoh Kode WebHook
       url: https://github.com/whatsauth/webhook
@@ -664,12 +664,38 @@ paths:
                   commit:
                     type: string
                     example: d4a105de7b3078d3c2c29121c4477ca41da7079a
-  /signup:
+  /botregister:
     post:
       tags:
-        - signup
-      summary: Pendaftaran Baru atau Refres Access Token
-      description: Melakukan pendaftaran atau refresh token dengan input URL dan Secret WebHook. Balasan berupa Token yang baru yang berlaku selama 30 hari
+        - botregister
+      summary: Pendaftaran nomor bot WhatsApp atau refresh access token
+      description: Mendaftarkan/memperbarui webhook satu nomor BOT WhatsApp beserta token API 30 hari. Ini bukan pendaftaran pengguna aplikasi - platform ini tidak punya pendaftaran pengguna, identitas orang datang dari WhatsAuth. Dokumennya disimpan di koleksi Mongo "bot" (nama lama "user").
+      operationId: botRegister
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebHook'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BotAccount'
+        '405':
+          description: Invalid input
+      security:
+        - token:
+            - write:apiKey
+            - read:apiKey
+  /signup:
+    post:
+      deprecated: true
+      tags:
+        - botregister
+      summary: (usang) Alias lama /botregister
+      description: Nama lama yang menyesatkan - endpoint ini mendaftarkan nomor bot, bukan pengguna aplikasi. Masih dilayani sementara supaya onboarding yang sudah berjalan tidak putus; pakai POST /botregister untuk seterusnya.
       operationId: signUpNewUser
       requestBody:
         content:
@@ -682,7 +708,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserAccount'
+                $ref: '#/components/schemas/BotAccount'
         '405':
           description: Invalid input
       security:
@@ -959,7 +985,7 @@ components:
             sendtyping: 
               type: boolean
               example: false
-    UserAccount:
+    BotAccount:
       type: object
       properties:
         phonenumber:
