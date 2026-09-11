@@ -44,6 +44,8 @@ tags:
     description: Portal Tugas - pengumpulan tugas mahasiswa dan laporan kemiripan
   - name: kurikulum
     description: Data referensi kurikulum - prodi, rumpun, CPL, ritme mingguan
+  - name: proyekblok
+    description: Modul Blok/Proyek - instance proyek per rumpun kurikulum dan penilaian per mahasiswa per mata kuliah
 paths:
   /health:
     get:
@@ -341,6 +343,249 @@ paths:
                     type: object
         '401':
           description: Token dosen tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /proyekblok:
+    get:
+      tags:
+        - proyekblok
+      summary: Daftar proyek blok
+      description: Siapa pun yang memegang token WhatsAuth yang masih berlaku boleh melihat daftar proyek blok. Token dikirim lewat header Authorization berisi "Bearer <token>". Filter prodi dan angkatan opsional - kalau keduanya dikosongkan seluruh proyek dikembalikan.
+      operationId: daftarProyekBlok
+      parameters:
+        - in: query
+          name: prodi
+          schema:
+            type: string
+          required: false
+          description: Kode/slug program studi, saring daftar ke satu prodi saja
+          example: trpl
+        - in: query
+          name: angkatan
+          schema:
+            type: string
+          required: false
+          description: Tahun angkatan, saring daftar ke satu angkatan saja
+          example: "2026"
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proyekblok:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProyekBlok'
+        '401':
+          description: Header Authorization kosong, token kosong, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+    post:
+      tags:
+        - proyekblok
+      summary: Buat instance proyek blok
+      description: Membuat instance proyek nyata di atas satu rumpun kurikulum (lihat /kurikulum/prodi/{prodi}/rumpun) untuk satu angkatan, beserta anggota dan dosen pembimbingnya. Hanya dosen - atau admin - yang sudah login lewat WhatsAuth (lihat /whatsauth/request) yang boleh membuatnya. Kalau status dikosongkan, nilainya diisi draft.
+      operationId: buatProyekBlok
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuatProyekBlokRequest'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProyekBlok'
+        '401':
+          description: Header Authorization kosong, token kosong, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Pemegang token bukan dosen (dan bukan admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Body JSON tidak valid atau validasi gagal - mis. rumpun_kode tidak ada di data kurikulum prodi itu, judul kosong, status di luar draft/berjalan/selesai, selesai_minggu lebih awal dari mulai_minggu, atau ada nim anggota yang terdaftar dua kali
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /proyekblok/{id}:
+    get:
+      tags:
+        - proyekblok
+      summary: Detail proyek blok beserta nilainya
+      description: Mengembalikan satu proyek blok lengkap dengan seluruh baris penilaiannya (satu baris per mahasiswa per mata kuliah) dan rekap nilai per mahasiswa. Cukup token WhatsAuth yang masih berlaku.
+      operationId: detailProyekBlok
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+          description: ObjectID proyek blok
+          example: 66f0a1b2c3d4e5f678901234
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proyek:
+                    $ref: '#/components/schemas/ProyekBlok'
+                  nilai:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PenilaianProyek'
+                  rekap:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RekapNilai'
+        '401':
+          description: Header Authorization kosong, token kosong, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Proyek blok tidak ditemukan (termasuk kalau id bukan ObjectID yang sah)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /proyekblok/{id}/nilai:
+    post:
+      tags:
+        - proyekblok
+      summary: Input atau perbarui nilai satu mahasiswa untuk satu mata kuliah
+      description: >-
+        Menyimpan nilai satu mahasiswa untuk satu mata kuliah di dalam proyek
+        blok ini. Satu proyek menilai beberapa mata kuliah sekaligus, jadi
+        kirim satu permintaan per pasangan nim dan kode_mk. Pemanggilan ulang
+        dengan pasangan nim dan kode_mk yang sama memperbarui baris yang sudah
+        ada, bukan menambah baris baru.
+
+
+        Hanya dosen pembimbing proyek ini - NIP-nya cocok dengan dosen_nip
+        proyek - atau admin yang boleh menilai. Dosen lain yang terdaftar pun
+        tidak boleh menilai proyek yang bukan bimbingannya.
+
+
+        nilai_akhir TIDAK diterima dari body - nilainya selalu dihitung server
+        dari komponen dengan bobot tetap hasil proyek 40%, ujian 30%, kuis 15%,
+        presentasi 15%. Kalau body memuat nilai_akhir, isinya diabaikan.
+      operationId: inputNilaiProyekBlok
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+          description: ObjectID proyek blok
+          example: 66f0a1b2c3d4e5f678901234
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InputNilaiRequest'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PenilaianProyek'
+        '401':
+          description: Header Authorization kosong, token kosong, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Pemegang token bukan dosen pembimbing proyek ini (dan bukan admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Proyek blok tidak ditemukan (termasuk kalau id bukan ObjectID yang sah)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Body JSON tidak valid atau validasi gagal - mis. nim bukan anggota proyek ini, mata kuliah bukan bagian rumpun proyek, atau ada komponen di luar rentang 0-100
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /mahasiswa/{nim}/nilai:
+    get:
+      tags:
+        - proyekblok
+      summary: Riwayat nilai satu mahasiswa
+      description: Mengembalikan seluruh baris penilaian satu mahasiswa di semua proyek blok yang pernah diikutinya, beserta rekapnya. Dosen dan admin boleh melihat nilai siapa pun; mahasiswa hanya boleh melihat nilainya sendiri - kepemilikan NIM dibuktikan dari nomor WhatsApp di token yang terdaftar sebagai anggota proyek.
+      operationId: nilaiMahasiswa
+      parameters:
+        - in: path
+          name: nim
+          schema:
+            type: string
+          required: true
+          description: NIM mahasiswa
+          example: "2026001"
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nim:
+                    type: string
+                    example: "2026001"
+                  nilai:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PenilaianProyek'
+                  rekap:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RekapNilai'
+        '401':
+          description: Header Authorization kosong, token kosong, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Mahasiswa hanya boleh melihat nilainya sendiri
           content:
             application/json:
               schema:
@@ -926,6 +1171,210 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Pasangan'
+    ProyekBlok:
+      description: Instance proyek nyata di atas satu rumpun kurikulum untuk satu angkatan. Definisi mata kuliah dan CPL-nya tidak diduplikasi ke sini - ambil dari rumpun lewat rumpun_kode.
+      type: object
+      properties:
+        id:
+          type: string
+          example: 66f0a1b2c3d4e5f678901234
+        rumpun_kode:
+          type: string
+          description: Kode rumpun kurikulum yang jadi cetak biru blok ini
+          example: R1
+        prodi_kode:
+          type: string
+          example: trpl
+        angkatan:
+          type: string
+          example: "2026"
+        judul:
+          type: string
+          example: Portofolio Digital Profesional
+        deskripsi:
+          type: string
+          example: Menyusun portofolio digital profesional sekaligus rencana usaha berbasis teknologi
+        dosen_nip:
+          type: string
+          description: NIP dosen pembimbing/penilai utama - hanya dia (atau admin) yang boleh menginput nilai
+          example: "198001012020121001"
+        anggota:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnggotaProyek'
+        status:
+          type: string
+          enum:
+            - draft
+            - berjalan
+            - selesai
+          example: berjalan
+        mulai_minggu:
+          type: integer
+          example: 1
+        selesai_minggu:
+          type: integer
+          example: 8
+    AnggotaProyek:
+      type: object
+      properties:
+        nim:
+          type: string
+          example: "2026001"
+        nama:
+          type: string
+          example: Budi Santoso
+        phonenumber:
+          type: string
+          description: Nomor WhatsApp anggota - dipakai untuk WhatsAuth dan notifikasi, sekaligus jadi bukti kepemilikan NIM di GET /mahasiswa/{nim}/nilai
+          example: "6281234567890"
+    PenilaianProyek:
+      description: Satu baris nilai per (proyek, nim, kode_mk) - satu proyek menilai beberapa mata kuliah sekaligus lewat artefak yang berbeda, jadi satu mahasiswa punya beberapa baris dalam satu proyek.
+      type: object
+      properties:
+        id:
+          type: string
+          example: 66f0a1b2c3d4e5f678901299
+        proyek_blok_id:
+          type: string
+          example: 66f0a1b2c3d4e5f678901234
+        nim:
+          type: string
+          example: "2026001"
+        kode_mk:
+          type: string
+          description: Salah satu mata kuliah pada rumpun proyek ini, ditulis sebagaimana tercatat di data kurikulum
+          example: Literasi Digital (3)
+        komponen:
+          $ref: '#/components/schemas/KomponenNilai'
+        nilai_akhir:
+          type: number
+          description: Selalu dihitung server dari komponen dengan bobot tetap 40/30/15/15, tidak pernah diinput manual
+          example: 84.25
+        catatan:
+          type: string
+          example: Portofolio rapi, presentasi perlu latihan lagi
+        dinilai_oleh:
+          type: string
+          description: Identitas penilai yang sebenarnya (bisa admin, bukan selalu pembimbing) - NIP dosen kalau nomor WhatsApp di token terdaftar punya NIP, kalau tidak nomornya sendiri dengan awalan "wa:"
+          example: "198001012020121001"
+    KomponenNilai:
+      description: Keempat komponen nilai, masing-masing berskala 0-100. Bobotnya tetap - hasil proyek 40%, ujian 30%, kuis 15%, presentasi 15% - dan dihitung di server, tidak disimpan per dokumen.
+      type: object
+      properties:
+        hasil_proyek:
+          type: number
+          description: Skala 0-100, boleh memakai nilai kelompok (bobot 40%)
+          minimum: 0
+          maximum: 100
+          example: 88
+        ujian:
+          type: number
+          description: Skala 0-100, individu - ujian berpengawas di kampus (bobot 30%)
+          minimum: 0
+          maximum: 100
+          example: 80
+        kuis:
+          type: number
+          description: Skala 0-100, individu (bobot 15%)
+          minimum: 0
+          maximum: 100
+          example: 85
+        presentasi:
+          type: number
+          description: Skala 0-100, individu meski proyeknya kelompok (bobot 15%)
+          minimum: 0
+          maximum: 100
+          example: 82
+    RekapNilai:
+      description: Bentuk ringkas nilai satu mahasiswa - nilai akhir per mata kuliah beserta rata-ratanya.
+      type: object
+      properties:
+        nim:
+          type: string
+          example: "2026001"
+        per_mata_kuliah:
+          type: object
+          description: Peta nama mata kuliah ke nilai akhirnya
+          additionalProperties:
+            type: number
+          example:
+            Literasi Digital (3): 84.25
+            Kewirausahaan (3): 79.5
+        rata_rata:
+          type: number
+          description: Rata-rata dari nilai akhir tiap mata kuliah (bukan dari komponen), dibulatkan 2 angka desimal
+          example: 81.88
+    BuatProyekBlokRequest:
+      type: object
+      properties:
+        rumpun_kode:
+          type: string
+          description: Kode rumpun yang harus sudah ada di data kurikulum prodi itu
+          example: R1
+        prodi_kode:
+          type: string
+          example: trpl
+        angkatan:
+          type: string
+          example: "2026"
+        judul:
+          type: string
+          example: Portofolio Digital Profesional
+        deskripsi:
+          type: string
+          example: Menyusun portofolio digital profesional sekaligus rencana usaha berbasis teknologi
+        dosen_nip:
+          type: string
+          example: "198001012020121001"
+        anggota:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnggotaProyek'
+        status:
+          type: string
+          description: Kalau dikosongkan, diisi draft
+          enum:
+            - draft
+            - berjalan
+            - selesai
+          default: draft
+          example: berjalan
+        mulai_minggu:
+          type: integer
+          example: 1
+        selesai_minggu:
+          type: integer
+          description: Tidak boleh negatif dan tidak boleh lebih awal dari mulai_minggu
+          example: 8
+      required:
+        - rumpun_kode
+        - prodi_kode
+        - angkatan
+        - judul
+        - dosen_nip
+    InputNilaiRequest:
+      description: Body input nilai. nilai_akhir tidak ada di sini karena selalu dihitung server dari komponen dengan bobot tetap 40/30/15/15.
+      type: object
+      properties:
+        nim:
+          type: string
+          description: Harus NIM yang terdaftar sebagai anggota proyek ini
+          example: "2026001"
+        kode_mk:
+          type: string
+          description: Harus salah satu mata kuliah pada rumpun proyek ini. Pencocokannya longgar (tanpa peka huruf besar, cocok sebagian), jadi "literasi digital" pun diterima untuk "Literasi Digital (3)".
+          example: Literasi Digital (3)
+        komponen:
+          $ref: '#/components/schemas/KomponenNilai'
+        catatan:
+          type: string
+          description: Opsional
+          example: Portofolio rapi, presentasi perlu latihan lagi
+      required:
+        - nim
+        - kode_mk
+        - komponen
   requestBodies:
     TextMessageReq:
       description: Kirim Pesan teks
@@ -947,7 +1396,14 @@ components:
       name: token
       in: header
     dosenToken:
-      type: apiKey
-      name: token
-      in: header
-      description: Token PASETO WhatsAuth (keypair bersama PUBLICKEY/PRIVATEKEY) dari nomor WhatsApp yang terdaftar sebagai dosen, didapat lewat alur POST /whatsauth/request
+      type: http
+      scheme: bearer
+      bearerFormat: PASETO v4.public
+      description: >-
+        Token PASETO WhatsAuth (keypair bersama PUBLICKEY/PRIVATEKEY) dari nomor
+        WhatsApp yang terdaftar sebagai dosen, didapat lewat alur POST
+        /whatsauth/request. Dikirim sebagai `Authorization: Bearer <token>` —
+        BUKAN header `token` seperti endpoint WhatsApp/device di atas. Dokumen
+        ini sebelumnya mendeklarasikannya sebagai apiKey header `token`, tidak
+        sesuai kode (`mod/portaltugas/auth.go`, `mod/proyekblok/auth.go`
+        keduanya membaca header Authorization).
