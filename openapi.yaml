@@ -88,7 +88,7 @@ paths:
       tags:
         - tugas
       summary: Buat tugas baru
-      description: Hanya dosen yang sudah login (lihat /dosen/login) yang bisa membuat tugas
+      description: Hanya dosen yang sudah login lewat WhatsAuth (lihat /whatsauth/request) yang bisa membuat tugas
       operationId: buatTugas
       requestBody:
         content:
@@ -248,43 +248,6 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
-  /dosen/login:
-    post:
-      tags:
-        - tugas
-      summary: Login dosen Portal Tugas
-      description: Autentikasi memakai password, mengembalikan token PASETO berlaku 24 jam
-      operationId: loginDosen
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                password:
-                  type: string
-              required:
-                - password
-      responses:
-        '200':
-          description: successful operation
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  token:
-                    type: string
-                    example: v4.public.asoiduas
-                  exp:
-                    type: string
-                    example: 2024-08-02T06:34:58Z
-        '401':
-          description: Password salah
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
   /dosen/ping:
     get:
       tags:
@@ -951,4 +914,4 @@ components:
       type: apiKey
       name: token
       in: header
-      description: Token PASETO dosen yang didapat dari POST /dosen/login
+      description: Token PASETO WhatsAuth (keypair bersama PUBLICKEY/PRIVATEKEY) dari nomor WhatsApp yang terdaftar sebagai dosen, didapat lewat alur POST /whatsauth/request
