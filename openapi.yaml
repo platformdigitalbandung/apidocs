@@ -445,6 +445,42 @@ paths:
                 $ref: '#/components/schemas/DeviceResponse'
         '400':
           description: Invalid status value
+  /device/status/{token}:
+    get:
+      tags:
+        - device
+      summary: Cek status pairing device
+      description: Endpoint read-only untuk cek status koneksi device WhatsApp — TIDAK memicu pairing baru atau koneksi apa pun (beda dari GET /device/{token}). Berguna untuk troubleshoot tanpa perlu cek log server.
+      operationId: getDeviceStatus
+      parameters:
+        - in: path
+          name: token
+          schema:
+            type: string
+          required: true
+          description: Token yang diberikan kepada user
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  phonenumber:
+                    type: string
+                    example: "6282258512828"
+                  store_id_ada:
+                    type: boolean
+                    description: Pernah berhasil pairing (sesi tersimpan di Postgres)
+                  is_connected:
+                    type: boolean
+                    description: Socket websocket ke server WhatsApp sedang tersambung
+                  is_logged_in:
+                    type: boolean
+                    description: Sesi sudah lolos login penuh, siap kirim/terima pesan
+        '403':
+          description: Token tidak valid
   /numbers/isonwa:
     post:
       tags:
