@@ -35,7 +35,30 @@ tags:
       url: https://github.com/whatsauth/webhook/blob/09c999be72e25660395f27c879456938a57561d1/function.go#L36C9-L36C9
   - name: whatsauth
     description: Get Token and Authorize
+  - name: version
+    description: Cek status dan commit deployan yang sedang berjalan
 paths:
+  /version:
+    get:
+      tags:
+        - version
+      summary: Cek status aplikasi
+      description: Mengembalikan status aplikasi dan git commit dari deployan yang sedang berjalan, dipakai untuk memastikan deployan berhasil tanpa perlu cek log server.
+      operationId: getVersion
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  commit:
+                    type: string
+                    example: d4a105de7b3078d3c2c29121c4477ca41da7079a
   /signup:
     post:
       tags:
