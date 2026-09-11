@@ -450,7 +450,7 @@ paths:
       tags:
         - device
       summary: Cek status pairing device
-      description: Endpoint read-only untuk cek status koneksi device WhatsApp — TIDAK memicu pairing baru atau koneksi apa pun (beda dari GET /device/{token}). Berguna untuk troubleshoot tanpa perlu cek log server.
+      description: Cek status koneksi device WhatsApp — TIDAK memicu permintaan pair code baru (beda dari GET /device/{token}). Catatan — bukan benar-benar read-only, kalau client belum ada di memori server, endpoint ini tetap membuat koneksi baru di background. Berguna untuk troubleshoot tanpa perlu cek log server.
       operationId: getDeviceStatus
       parameters:
         - in: path
