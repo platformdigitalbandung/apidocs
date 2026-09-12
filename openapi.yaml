@@ -2693,8 +2693,11 @@ components:
           example: "2026001"
         kode_mk:
           type: string
-          description: Salah satu mata kuliah pada rumpun proyek ini, ditulis sebagaimana tercatat di data kurikulum
-          example: Literasi Digital (3)
+          description: >-
+            Kunci asing ke koleksi `matakuliah` - kode stabil, bukan teks tampilan.
+            Server mengkanonikkannya saat menyimpan, jadi nilai yang dikembalikan di
+            sini selalu bentuk kode ini apa pun ejaan yang dikirim.
+          example: LITERASI-DIGITAL
         komponen:
           $ref: '#/components/schemas/KomponenNilai'
         nilai_akhir:
@@ -2813,8 +2816,14 @@ components:
           example: "2026001"
         kode_mk:
           type: string
-          description: Harus salah satu mata kuliah pada rumpun proyek ini. Pencocokannya longgar (tanpa peka huruf besar, cocok sebagian), jadi "literasi digital" pun diterima untuk "Literasi Digital (3)".
-          example: Literasi Digital (3)
+          description: >-
+            Mata kuliah yang dinilai, harus milik rumpun proyek ini. Boleh ditulis
+            sebagai kode (`LITERASI-DIGITAL`), nama lengkap (`Literasi Digital`), atau
+            sebagian nama (`literasi`) - server mencocokkannya ke koleksi `matakuliah`
+            lalu menyimpan `kode`-nya. Masukan yang cocok ke DUA mata kuliah ditolak
+            dengan 422 yang menyebut pilihan yang sah, bukan ditebak. Nilai yang
+            tersimpan dan dikembalikan selalu bentuk kode.
+          example: literasi digital
         komponen:
           $ref: '#/components/schemas/KomponenNilai'
         catatan:
