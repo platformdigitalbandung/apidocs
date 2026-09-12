@@ -1453,7 +1453,8 @@ paths:
         Hanya dosen atau admin. `tanggal_jam` dikirim sebagai teks RFC3339 beserta zona
         waktu dan diurai eksplisit di server - masukan salah bentuk dijawab pesan yang
         menyebut formatnya. `pengawas` kosong berarti penjadwalnya sendiri yang
-        mengawasi.
+        mengawasi - tapi kalau NIP penjadwal sendiri belum diisi, permintaannya ditolak
+        422 dengan pesan yang menyebut PUT /dosen/nip.
       operationId: jadwalkanSesiUjian
       requestBody:
         required: true
@@ -1487,7 +1488,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
-          description: Body tidak sah, jenis tidak dikenal, atau tanggal_jam bukan RFC3339
+          description: >-
+            Body tidak sah, jenis tidak dikenal, tanggal_jam bukan RFC3339, atau NIP penjadwal
+            belum diisi sehingga `pengawas` tidak bisa ditentukan otomatis
           content:
             application/json:
               schema:
