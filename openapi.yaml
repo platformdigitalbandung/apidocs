@@ -23,6 +23,8 @@ servers:
 tags:
   - name: botregister
     description: Pendaftaran nomor bot WhatsApp atau refresh token, disertai URL dan Secret WebHook. Bukan pendaftaran pengguna aplikasi - identitas orang datang dari WhatsAuth.
+  - name: kalender
+    description: Kalender akademik per prodi/angkatan/semester, diturunkan dari ritme mingguan kurikulum. Baca publik hanya untuk kalender yang sudah diterbitkan.
     externalDocs:
       description: Contoh Kode WebHook
       url: https://github.com/whatsauth/webhook
@@ -343,6 +345,175 @@ paths:
                     type: object
         '401':
           description: Token dosen tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /kalender:
+    get:
+      tags:
+        - kalender
+      summary: Daftar kalender akademik
+      description: Mengembalikan kalender yang sudah diterbitkan - tidak perlu token. Filter prodi, angkatan, dan semester opsional. Dosen yang menyertakan token WhatsAuth dan draft=1 ikut menerima kalender yang masih draft.
+      operationId: daftarKalender
+      parameters:
+        - in: query
+          name: prodi
+          schema:
+            type: string
+          required: false
+          example: trpl
+        - in: query
+          name: angkatan
+          schema:
+            type: string
+          required: false
+          example: "2026"
+        - in: query
+          name: semester
+          schema:
+            type: integer
+          required: false
+          example: 1
+        - in: query
+          name: draft
+          schema:
+            type: string
+            enum: ["1"]
+          required: false
+          description: Sertakan kalender draft - wajib token dosen
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kalender:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KalenderSemester'
+        '401':
+          description: draft=1 diminta tanpa token dosen yang sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+    post:
+      tags:
+        - kalender
+      summary: Buat draft kalender semester
+      description: Membuat draft kalender dari ritme mingguan kurikulum - tanggal tiap sesi diisi otomatis dari pola mingguan, lalu boleh disunting selagi masih draft. Satu prodi+angkatan+semester hanya boleh punya satu kalender. Hanya dosen (atau admin) lewat WhatsAuth.
+      operationId: buatKalender
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuatKalenderRequest'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KalenderSemester'
+        '401':
+          description: Header Authorization kosong, token kosong, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Body tidak valid, tanggal_mulai bukan YYYY-MM-DD, prodi tidak ada di data kurikulum, ritme mingguan belum di-seed, atau kalender untuk kombinasi itu sudah ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /kalender/{id}:
+    put:
+      tags:
+        - kalender
+      summary: Sunting sesi kalender (hanya selagi draft)
+      description: Mengganti seluruh daftar sesi kalender. Ditolak kalau kalender sudah diterbitkan - perubahan jadwal setelah terbit diumumkan, bukan diubah diam-diam.
+      operationId: gantiSesiKalender
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          example: 6aa3f4f514984a96f23147dd
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sesi:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/SesiKalender'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KalenderSemester'
+        '401':
+          description: Bukan dosen atau token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kalender tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Sesi kosong atau kalender sudah diterbitkan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /kalender/{id}/terbitkan:
+    post:
+      tags:
+        - kalender
+      summary: Terbitkan kalender
+      description: Menandai kalender sebagai resmi sehingga terlihat publik. Idempoten - memanggil ulang tidak mengubah waktu terbit yang sudah tercatat.
+      operationId: terbitkanKalender
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          example: 6aa3f4f514984a96f23147dd
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KalenderSemester'
+        '401':
+          description: Bukan dosen atau token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kalender tidak ditemukan
           content:
             application/json:
               schema:
@@ -1276,6 +1447,85 @@ components:
           type: string
           description: Nomor WhatsApp anggota - dipakai untuk WhatsAuth dan notifikasi, sekaligus jadi bukti kepemilikan NIM di GET /mahasiswa/{nim}/nilai
           example: "6281234567890"
+    KalenderSemester:
+      description: Kalender satu semester untuk satu prodi dan angkatan, diturunkan dari ritme mingguan kurikulum.
+      type: object
+      properties:
+        id:
+          type: string
+          example: 6aa3f4f514984a96f23147dd
+        prodi_kode:
+          type: string
+          example: trpl
+        angkatan:
+          type: string
+          example: "2026"
+        semester:
+          type: integer
+          example: 1
+        tanggal_mulai:
+          type: string
+          format: date-time
+          description: Hari Senin pada pekan pertama semester
+        sesi:
+          type: array
+          items:
+            $ref: '#/components/schemas/SesiKalender'
+        diterbitkan:
+          type: boolean
+          description: false = draft, belum terlihat publik
+          example: false
+        diterbitkan_pada:
+          type: string
+          format: date-time
+    SesiKalender:
+      description: Satu sesi harian pada kalender, hasil penerjemahan SesiHari ritme mingguan ke tanggal konkret.
+      type: object
+      properties:
+        minggu:
+          type: integer
+          example: 1
+        tanggal:
+          type: string
+          format: date-time
+        hari:
+          type: string
+          example: Jumat
+        moda:
+          type: string
+          example: opsional_luring_daring
+        jam_mulai:
+          type: string
+          example: "08:00"
+        jam_selesai:
+          type: string
+          example: "20:00"
+        keterangan:
+          type: string
+        rumpun_kode:
+          type: string
+          description: FK opsional ke Rumpun.Kode
+          example: R1
+    BuatKalenderRequest:
+      type: object
+      properties:
+        prodi_kode:
+          type: string
+          example: trpl
+        angkatan:
+          type: string
+          example: "2026"
+        semester:
+          type: integer
+          example: 1
+        tanggal_mulai:
+          type: string
+          description: Format YYYY-MM-DD. Kalau bukan hari Senin, dipakai hari Senin pada pekan yang sama.
+          example: "2026-09-14"
+        jumlah_minggu:
+          type: integer
+          description: Kosong = 16
+          example: 16
     ProyekSaya:
       description: Proyek milik pemegang token - yang dibimbing (dosen) atau yang diikuti (mahasiswa).
       type: object
