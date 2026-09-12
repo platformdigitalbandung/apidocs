@@ -33,13 +33,12 @@ tags:
   - name: kuisgerbang
     description: >-
       Kuis atas materi asinkron yang wajib ditempuh mahasiswa sebelum sesi tatap muka.
-      Modul ini TIDAK menahan akses ke sesi - ia hanya menyediakan status lulus untuk
-      dicek modul lain. Kunci jawaban tidak pernah ikut terkirim saat soal diambil.
+      Modul ini tidak menahan akses ke sesi - ia menyediakan status lulus untuk dicek
+      modul lain. Kunci jawaban tidak pernah dikirim ke client sebelum submit.
   - name: sesiujian
     description: >-
       Asesmen berpengawas - jadwal ujian di kampus beserta pencatatan kehadirannya.
-      Bukan proctoring otomatis: yang dibuktikan "diawasi & tercatat", bukan deteksi
-      kecurangan. Skor ujiannya sendiri diinput dosen lewat Modul Blok/Proyek.
+      Bukan proctoring otomatis. Skor ujiannya diinput dosen lewat Modul Blok/Proyek.
   - name: akademik
     description: Roster mahasiswa - sumber identitas akademik bersama yang dipakai modul dasbor, blok/proyek, dan proyek kerja. Diisi pengelola prodi, bukan pendaftaran mandiri.
   - name: device
@@ -1234,66 +1233,16 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
-  /kuisgerbang:
+  /kuisgerbang/{id}/submit:
     post:
       tags:
         - kuisgerbang
-      summary: Susun kuis gerbang satu rumpun satu minggu
+      summary: Submit jawaban kuis
       description: >-
-        Hanya dosen atau admin. Satu rumpun hanya boleh punya satu kuis per minggu.
-        `ambang_lulus` kosong diisi 70 - ambang nol ditolak, karena nol berarti semua
-        orang lulus tanpa menjawab apa pun. Balasannya TANPA `indeks_benar`.
-      operationId: buatKuisGerbang
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/KuisGerbangRequest'
-      responses:
-        '201':
-          description: Kuis tersimpan (tanpa kunci jawaban)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/KuisGerbang'
-        '401':
-          description: Token WhatsAuth tidak sah
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-        '403':
-          description: Bukan dosen maupun admin
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-        '404':
-          description: Rumpun tidak ada di data kurikulum
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-        '422':
-          description: Body tidak sah, kuis minggu itu sudah ada, atau soal/kunci tidak lengkap
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-      security:
-        - dosenToken: []
-  /kuisgerbang/{id}/jawab:
-    post:
-      tags:
-        - kuisgerbang
-      summary: Kirim jawaban kuis
-      description: >-
-        NIM diambil server dari roster `mahasiswa` lewat nomor WhatsApp pada token,
-        BUKAN dari body - kalau NIM boleh diketik sendiri, siapa pun bisa mengerjakan
-        kuis atas nama orang lain. Skor dan kelulusan dihitung server. Mengirim ulang
-        memperbarui baris yang sama, bukan menambah baris baru.
-      operationId: jawabKuisGerbang
+        Backend yang menghitung skor dan lulus. NIM diambil dari roster `mahasiswa`
+        lewat nomor WhatsApp pada token, bukan dari body. Mengirim ulang memperbarui
+        baris yang sama.
+      operationId: submitKuisGerbang
       parameters:
         - in: path
           name: id
@@ -1310,7 +1259,7 @@ paths:
               properties:
                 jawaban_idx:
                   type: array
-                  description: Indeks pilihan (mulai 0) per soal, urutannya sama dengan `soal`
+                  description: Indeks pilihan (mulai 0) per soal, urutan sama dengan `soal`
                   items:
                     type: integer
                   example: [0, 1, 1, 1]
@@ -1334,41 +1283,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
-          description: Jumlah jawaban tidak sama dengan jumlah soal, atau ada indeks di luar pilihan yang tersedia
+          description: Jumlah jawaban tidak sama dengan jumlah soal, atau ada indeks di luar pilihan
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
-  /kuisgerbang/{prodi}/{rumpun}/{minggu}:
+  /kuisgerbang/{rumpun}/{minggu}:
     get:
       tags:
         - kuisgerbang
       summary: Ambil soal kuis
-      description: >-
-        Balasannya TIDAK PERNAH memuat `indeks_benar` - kunci jawaban dibuang eksplisit
-        di server, bukan sekadar disembunyikan lewat tag JSON.
+      description: Balasannya tidak pernah memuat `indeks_benar`.
       operationId: soalKuisGerbang
       parameters:
-        - in: path
-          name: prodi
-          schema:
-            type: string
-          required: true
-          description: Kode prodi
         - in: path
           name: rumpun
           schema:
             type: string
           required: true
-          description: Kode rumpun
         - in: path
           name: minggu
           schema:
             type: integer
           required: true
-          description: Minggu ke berapa, mulai 1
       responses:
         '200':
           description: Soal tanpa kunci jawaban
@@ -1396,14 +1335,14 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
-  /mahasiswa/{nim}/kuisgerbang:
+  /mahasiswa/{nim}/kuisgerbang/status:
     get:
       tags:
         - kuisgerbang
       summary: Status kuis seorang mahasiswa
       description: >-
-        Dosen/admin boleh melihat siapa pun; mahasiswa hanya dirinya sendiri.
-        Dipakai untuk tahu siapa yang belum lulus sebelum sesi tatap muka.
+        Dosen cek siapa yang belum lulus sebelum sesi Jumat; mahasiswa hanya dirinya
+        sendiri.
       operationId: statusKuisMahasiswa
       parameters:
         - in: path
@@ -1411,19 +1350,20 @@ paths:
           schema:
             type: string
           required: true
-        - in: query
-          name: minggu
-          schema:
-            type: integer
-          required: false
-          description: Saring per minggu; kosong berarti seluruh minggu
       responses:
         '200':
-          description: Ringkasan pengerjaan
+          description: Seluruh pengerjaan kuis NIM itu
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StatusKuisMahasiswa'
+                type: object
+                properties:
+                  nim:
+                    type: string
+                  jawaban:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/JawabanKuis'
         '401':
           description: Token WhatsAuth tidak sah
           content:
@@ -1432,12 +1372,6 @@ paths:
                 $ref: '#/components/schemas/DetailError'
         '403':
           description: Mahasiswa meminta status NIM orang lain
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-        '404':
-          description: NIM tidak ada di roster
           content:
             application/json:
               schema:
@@ -1451,10 +1385,7 @@ paths:
       summary: Jadwalkan sesi ujian
       description: >-
         Hanya dosen atau admin. `tanggal_jam` dikirim sebagai teks RFC3339 beserta zona
-        waktu dan diurai eksplisit di server - masukan salah bentuk dijawab pesan yang
-        menyebut formatnya. `pengawas` kosong berarti penjadwalnya sendiri yang
-        mengawasi - tapi kalau NIP penjadwal sendiri belum diisi, permintaannya ditolak
-        422 dengan pesan yang menyebut PUT /dosen/nip.
+        waktu dan diurai eksplisit di server.
       operationId: jadwalkanSesiUjian
       requestBody:
         required: true
@@ -1481,70 +1412,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
-        '404':
-          description: Rumpun tidak ada di data kurikulum
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
         '422':
-          description: >-
-            Body tidak sah, jenis tidak dikenal, tanggal_jam bukan RFC3339, atau NIP penjadwal
-            belum diisi sehingga `pengawas` tidak bisa ditentukan otomatis
+          description: Body tidak sah, jenis tidak dikenal, atau tanggal_jam bukan RFC3339
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
-    get:
-      tags:
-        - sesiujian
-      summary: Daftar sesi ujian
-      operationId: daftarSesiUjian
-      parameters:
-        - in: query
-          name: prodi
-          schema:
-            type: string
-          required: false
-        - in: query
-          name: rumpun
-          schema:
-            type: string
-          required: false
-      responses:
-        '200':
-          description: Daftar sesi, urut terbaru dulu
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  sesiujian:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/SesiUjian'
-        '401':
-          description: Token WhatsAuth tidak sah
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-      security:
-        - dosenToken: []
-  /sesiujian/{id}/kehadiran:
+  /sesiujian/{id}/checkin:
     post:
       tags:
         - sesiujian
       summary: Catat kehadiran mahasiswa di sesi ujian
       description: >-
-        Hanya pengawas yang ditunjuk pada sesi itu, atau admin - dosen lain yang
-        terdaftar pun ditolak, karena tanpa batas itu "diawasi & tercatat" kehilangan
-        artinya. NIM divalidasi ke roster `mahasiswa`. Mencatat ulang TIDAK menulis
-        ulang `jam_masuk` (bukti waktu kedatangan); `selesai: true` mengisi
-        `jam_selesai`.
-      operationId: catatKehadiranUjian
+        Hanya pengawas sesi itu, atau admin. Input manual NIM. Mencatat ulang
+        memperbarui baris yang sama.
+      operationId: checkinSesiUjian
       parameters:
         - in: path
           name: id
@@ -1563,10 +1447,6 @@ paths:
                 nim:
                   type: string
                   example: "2026001"
-                selesai:
-                  type: boolean
-                  description: true untuk menandai mahasiswa selesai mengerjakan
-                  example: false
       responses:
         '200':
           description: Kehadiran tercatat
@@ -1587,25 +1467,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '404':
-          description: Sesi ujian tidak ada, atau NIM tidak ada di roster
+          description: Sesi ujian tidak ada
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
-          description: Body JSON tidak sah
+          description: Body JSON tidak sah atau nim kosong
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /sesiujian/{id}/kehadiran:
     get:
       tags:
         - sesiujian
-      summary: Rekap kehadiran satu sesi ujian
+      summary: Rekap siapa hadir
       description: Hanya dosen atau admin.
-      operationId: rekapKehadiranUjian
+      operationId: kehadiranSesiUjian
       parameters:
         - in: path
           name: id
@@ -1614,11 +1495,16 @@ paths:
           required: true
       responses:
         '200':
-          description: Sesi beserta seluruh kehadirannya
+          description: Daftar kehadiran sesi itu
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RekapKehadiranUjian'
+                type: object
+                properties:
+                  kehadiran:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KehadiranUjian'
         '401':
           description: Token WhatsAuth tidak sah
           content:
@@ -2682,41 +2568,28 @@ components:
           type: integer
           example: 8
     KuisGerbang:
-      description: >-
-        Kuis gerbang satu rumpun pada satu minggu. Dalam balasan API, `soal` TIDAK
-        PERNAH memuat `indeks_benar` - kunci jawaban dibuang di server sebelum dikirim.
+      description: Kuis gerbang satu rumpun pada satu minggu. Dalam balasan API, `soal` tidak pernah memuat `indeks_benar`.
       type: object
       properties:
         id:
           type: string
-          example: 66f1a2b3c4d5e6f7a8b9c0d1
-        prodi_kode:
-          type: string
-          example: trpl
         rumpun_kode:
           type: string
           example: R1
         minggu:
           type: integer
           example: 3
-        judul:
-          type: string
-          example: Literasi Digital pekan 3
         ambang_lulus:
           type: number
           format: double
-          description: Persen 0-100. Kosong saat dibuat diisi 70; nol ditolak.
+          description: Persentase, mis. 70
           example: 70
-        dibuat_oleh:
-          type: string
-          readOnly: true
-          description: NIP dosen penyusun, diisi server dari token
         soal:
           type: array
           items:
             $ref: '#/components/schemas/SoalKuis'
     SoalKuis:
-      description: Satu butir pilihan ganda. `indeks_benar` hanya ada pada permintaan penyusunan, tidak pernah pada balasan.
+      description: Satu butir pilihan ganda. `indeks_benar` tidak pernah ikut dalam balasan.
       type: object
       properties:
         pertanyaan:
@@ -2727,55 +2600,6 @@ components:
           items:
             type: string
           example: ["80", "443", "22"]
-    SoalKuisRequest:
-      description: Bentuk soal saat dosen menyusun kuis - di sini `indeks_benar` wajib.
-      type: object
-      required:
-        - pertanyaan
-        - pilihan
-        - indeks_benar
-      properties:
-        pertanyaan:
-          type: string
-          example: Port standar HTTPS?
-        pilihan:
-          type: array
-          description: Minimal 2 pilihan, tidak boleh ada yang kosong
-          items:
-            type: string
-          example: ["80", "443", "22"]
-        indeks_benar:
-          type: integer
-          description: Indeks jawaban benar di dalam `pilihan`, mulai 0
-          example: 1
-    KuisGerbangRequest:
-      type: object
-      required:
-        - prodi_kode
-        - rumpun_kode
-        - minggu
-        - soal
-      properties:
-        prodi_kode:
-          type: string
-          example: trpl
-        rumpun_kode:
-          type: string
-          example: R1
-        minggu:
-          type: integer
-          example: 3
-        judul:
-          type: string
-          example: Literasi Digital pekan 3
-        ambang_lulus:
-          type: number
-          format: double
-          example: 70
-        soal:
-          type: array
-          items:
-            $ref: '#/components/schemas/SoalKuisRequest'
     JawabanKuis:
       description: Satu pengerjaan oleh satu mahasiswa atas satu kuis, disimpan per (kuis, nim).
       type: object
@@ -2787,59 +2611,26 @@ components:
         nim:
           type: string
           readOnly: true
-          description: Diisi server dari roster lewat nomor WhatsApp pada token, bukan dari body
+          description: Diisi server dari roster lewat nomor WhatsApp pada token
           example: "2026001"
         jawaban_idx:
           type: array
           items:
             type: integer
-        benar:
-          type: integer
-          example: 3
-        total:
-          type: integer
-          example: 4
         skor:
           type: number
           format: double
-          description: Persen 0-100, dibulatkan dua desimal, dihitung server
+          description: Persentase 0-100, dihitung server
           example: 75
         lulus:
           type: boolean
           example: true
-    StatusKuisMahasiswa:
-      type: object
-      properties:
-        nim:
-          type: string
-        minggu:
-          type: integer
-          description: Saringan minggu yang dipakai; tidak muncul kalau seluruh minggu
-        jawaban:
-          type: array
-          items:
-            $ref: '#/components/schemas/JawabanKuis'
-        lulus:
-          type: integer
-          example: 2
-        total:
-          type: integer
-          example: 3
-        semua_lulus:
-          type: boolean
-          example: false
     SesiUjian:
-      description: >-
-        Satu jadwal ujian untuk satu rumpun. `pengawas` adalah NIP di koleksi
-        `dosentugas` - kunci asing, bukan nama yang disalin, dan NIP itu pula yang
-        menentukan siapa berwenang mencatat kehadirannya.
+      description: Satu jadwal ujian untuk satu rumpun.
       type: object
       properties:
         id:
           type: string
-        prodi_kode:
-          type: string
-          example: trpl
         rumpun_kode:
           type: string
           example: R1
@@ -2858,24 +2649,17 @@ components:
           example: Lab 2, Gedung A
         pengawas:
           type: string
-          description: NIP pengawas di koleksi `dosentugas`
+          description: NIP dosen/petugas
           example: "198501012010121001"
-        dibuat_oleh:
-          type: string
-          readOnly: true
-          description: NIP dosen penjadwal, diisi server dari token
     SesiUjianRequest:
       type: object
       required:
-        - prodi_kode
         - rumpun_kode
         - jenis
         - tanggal_jam
         - lokasi
+        - pengawas
       properties:
-        prodi_kode:
-          type: string
-          example: trpl
         rumpun_kode:
           type: string
           example: R1
@@ -2886,19 +2670,16 @@ components:
             - akhir-blok
         tanggal_jam:
           type: string
-          description: RFC3339 BESERTA zona waktu - diurai eksplisit di server
+          description: RFC3339 beserta zona waktu
           example: "2026-11-20T09:00:00+07:00"
         lokasi:
           type: string
           example: Lab 2, Gedung A
         pengawas:
           type: string
-          description: NIP pengawas; kosong berarti penjadwalnya sendiri
+          description: NIP dosen/petugas
     KehadiranUjian:
-      description: >-
-        Satu baris per (sesi, nim). Sengaja TIDAK memuat nama mahasiswa - identitasnya
-        cukup lewat NIM ke koleksi `mahasiswa`, supaya tidak ada dua sumber yang bisa
-        berbeda diam-diam saat roster diperbarui.
+      description: Satu baris per (sesi, nim).
       type: object
       properties:
         id:
@@ -2911,33 +2692,13 @@ components:
         jam_masuk:
           type: string
           format: date-time
-          description: Bukti waktu kedatangan - tidak pernah ditulis ulang oleh pencatatan berikutnya
         jam_selesai:
           type: string
           format: date-time
-          description: Hanya muncul kalau sudah ditandai selesai
         dicatat_oleh:
           type: string
           readOnly: true
-          description: >-
-            NIP pengawas yang benar-benar mencatat - sengaja bukan pengawas terjadwal,
-            supaya jejak auditnya menunjuk orang yang sebenarnya. Admin tanpa NIP
-            tercatat sebagai `wa:<nomor>`.
-    RekapKehadiranUjian:
-      type: object
-      properties:
-        sesi_ujian:
-          $ref: '#/components/schemas/SesiUjian'
-        kehadiran:
-          type: array
-          items:
-            $ref: '#/components/schemas/KehadiranUjian'
-        hadir:
-          type: integer
-          example: 24
-        selesai:
-          type: integer
-          example: 22
+          description: NIP pengawas yang check-in manual; admin tanpa NIP tercatat sebagai `wa:<nomor>`
     MataKuliah:
       description: >-
         Satu mata kuliah kurikulum, milik satu rumpun. Diturunkan dari
