@@ -56,11 +56,19 @@ tags:
     description: Modul Blok/Proyek - instance proyek per rumpun kurikulum dan penilaian per mahasiswa per mata kuliah
 paths:
   /health:
+    # Rute ini ada di AKAR, bukan di bawah /api - server default dokumen ini
+    # berakhiran /api, jadi path item ini menimpanya. Tanpa override, pembaca
+    # dokumen akan memanggil https://apk.fly.dev/api/health yang menjawab 404.
+    servers:
+      - url: https://apk.fly.dev
+        description: Produksi (akar, di luar prefix /api)
     get:
       tags:
         - tugas
       summary: Health check Portal Tugas
-      description: Mengembalikan status service dan jumlah tugas yang tersimpan
+      description: >-
+        Mengembalikan status service dan jumlah tugas yang tersimpan.
+        Alamat lengkapnya `https://apk.fly.dev/health` - TANPA prefix `/api`.
       operationId: healthTugas
       responses:
         '200':
@@ -329,6 +337,53 @@ paths:
                     type: array
                     items:
                       type: object
+  /kurikulum/prodi/{prodi}/matakuliah:
+    get:
+      tags:
+        - kurikulum
+      summary: Daftar mata kuliah terstruktur suatu prodi
+      description: >-
+        Mata kuliah dengan kode stabil dan SKS berupa angka, diturunkan dari
+        `rumpun.mata_kuliah` saat seed kurikulum. Berbeda dari daftar rumpun yang
+        memuat mata kuliah sebagai teks tampilan (`"Literasi Digital (3)"`) - SKS
+        di sini tidak perlu diurai dari dalam tanda kurung. Publik, seperti rute
+        kurikulum lainnya.
+      operationId: daftarMataKuliah
+      parameters:
+        - in: path
+          name: prodi
+          schema:
+            type: string
+          required: true
+          description: Kode/slug program studi
+        - in: query
+          name: rumpun
+          schema:
+            type: string
+          required: false
+          description: Saring per kode rumpun; kosong berarti seluruh prodi
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matakuliah:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MataKuliah'
+                  total_sks:
+                    type: integer
+                    description: Jumlah SKS seluruh mata kuliah yang dikembalikan
+                    example: 58
+        '404':
+          description: Prodi tidak ada di data kurikulum
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
   /kurikulum/seed:
     post:
       tags:
@@ -740,7 +795,11 @@ paths:
       tags:
         - proyekkerja
       summary: Proyek kerja milik pemegang token
-      description: Mengembalikan proyek yang dibimbing kalau nomor pada token adalah dosen yang NIP-nya sudah terisi, selain itu proyek yang diajukan sendiri.
+      description: >-
+        Mengembalikan proyek yang dibimbing kalau nomor pada token adalah dosen yang
+        NIP-nya sudah terisi, selain itu proyek yang diajukan sendiri. Proyek milik
+        mahasiswa dicari lewat NIM dari roster `mahasiswa`, bukan lewat nomor WhatsApp
+        yang tersalin di dokumen saat pengajuan - nomor bisa berganti, NIM tidak.
       operationId: proyekKerjaSaya
       responses:
         '200':
@@ -751,6 +810,22 @@ paths:
                 $ref: '#/components/schemas/ProyekKerjaSaya'
         '401':
           description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: >-
+            Nomor pada token belum terdaftar di roster `mahasiswa`. Sengaja bukan daftar
+            kosong: nomor di luar roster tidak mungkin punya pengajuan, karena pengajuannya
+            sendiri sudah ditolak lebih dulu - daftar kosong akan terbaca seperti "Anda
+            belum pernah mengajukan".
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Nomor terdaftar sebagai dosen tetapi `nip`-nya belum diisi - isi lewat PUT /dosen/nip.
           content:
             application/json:
               schema:
@@ -2191,6 +2266,40 @@ components:
         selesai_minggu:
           type: integer
           example: 8
+    MataKuliah:
+      description: >-
+        Satu mata kuliah kurikulum, milik satu rumpun. Diturunkan dari
+        `rumpun.mata_kuliah` saat seed - bukan daftar kedua yang diketik ulang.
+      type: object
+      properties:
+        id:
+          type: string
+          example: 66f1a2b3c4d5e6f7a8b9c0d1
+        kode:
+          type: string
+          description: Unik per prodi, diturunkan dari nama mata kuliah
+          example: LITERASI-DIGITAL
+        nama:
+          type: string
+          example: Literasi Digital
+        sks:
+          type: integer
+          description: Angka, bukan teks di dalam tanda kurung
+          example: 3
+        prodi_kode:
+          type: string
+          example: trpl
+        rumpun_kode:
+          type: string
+          example: R1
+        semester:
+          type: integer
+          example: 1
+        cpl:
+          type: array
+          description: Opsional; pemetaan CPL yang berlaku sekarang ada di level rumpun
+          items:
+            type: string
     AnggotaProyek:
       description: >-
         Anggota proyek. Hanya `nim` yang bermakna sebagai masukan - ia kunci asing
