@@ -48,6 +48,8 @@ tags:
     description: Portal Tugas - pengumpulan tugas mahasiswa dan laporan kemiripan
   - name: kurikulum
     description: Data referensi kurikulum - prodi, rumpun, CPL, ritme mingguan
+  - name: dasbor
+    description: Dasbor mahasiswa - beban belajar mingguan dan pelacakan capaian pembelajaran (CPL)
   - name: proyekblok
     description: Modul Blok/Proyek - instance proyek per rumpun kurikulum dan penilaian per mahasiswa per mata kuliah
 paths:
@@ -840,6 +842,135 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /dasbor/beban-belajar/{nim}:
+    get:
+      tags:
+        - dasbor
+      summary: Beban belajar minggu berjalan seorang mahasiswa
+      description: >-
+        Menjumlahkan menit instruksional seluruh sesi kalender pada minggu yang
+        sedang berjalan, lalu mengubahnya jadi SKS dengan dasar 85 menit
+        terjadwal-terbukti per SKS per minggu (SN-Dikti 170 menit, separuhnya
+        terjadwal - lihat dokumen kurikulum). Menit diambil dari ritme mingguan,
+        bukan selisih jam kalender, karena jam kotor memuat jeda ibadah & makan
+        yang tidak dihitung sebagai beban belajar.
+
+
+        Prodi, angkatan, dan semester mahasiswa dibaca dari koleksi `mahasiswa`.
+        Hanya kalender yang sudah diterbitkan yang dipakai. Dosen/admin boleh
+        melihat siapa pun; mahasiswa hanya dirinya sendiri (kepemilikan NIM
+        dibuktikan dari nomor WhatsApp di token lewat roster).
+      operationId: bebanBelajarMahasiswa
+      parameters:
+        - name: nim
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "2026001"
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BebanMingguan'
+        '401':
+          description: Token tidak valid atau tidak dikirim
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Mahasiswa mencoba melihat beban belajar orang lain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: NIM tidak ada di roster, kalender semester belum terbit, atau tanggal hari ini di luar rentang kalender
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /dasbor/cpl/{nim}:
+    get:
+      tags:
+        - dasbor
+      summary: Cakupan CPL seorang mahasiswa
+      description: >-
+        Sebuah CPL dihitung tercapai kalau mahasiswa punya nilai LULUS pada
+        minimal satu rumpun yang menyentuh CPL itu (`rumpun.cpl`) - dihitung
+        dari nilai nyata, bukan dari klaim di dokumen kurikulum. Ambang lulusnya
+        satu sumber dengan Modul Blok/Proyek.
+      operationId: cakupanCPLMahasiswa
+      parameters:
+        - name: nim
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "2026001"
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RingkasanCakupanCPL'
+        '401':
+          description: Token tidak valid atau tidak dikirim
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Mahasiswa mencoba melihat cakupan CPL orang lain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: NIM tidak ada di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /dasbor/prodi/{kode}/cpl:
+    get:
+      tags:
+        - dasbor
+      summary: Cakupan CPL agregat satu prodi
+      description: >-
+        Versi hidup dari matriks CPL yang selama ini ditulis manual di dokumen
+        kurikulum: sebuah CPL tercapai kalau ADA mahasiswa mana pun di prodi itu
+        yang sudah lulus di rumpun yang menyentuhnya. Tanpa token - isinya
+        agregat tanpa data pribadi, memang untuk halaman akreditasi/landing.
+      operationId: cakupanCPLProdi
+      parameters:
+        - name: kode
+          in: path
+          required: true
+          schema:
+            type: string
+          example: trpl
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RingkasanCakupanCPL'
+        '422':
+          description: Kode prodi kosong atau data kurikulumnya belum di-seed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
   /proyekblok:
     get:
       tags:
@@ -1684,6 +1815,81 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Pasangan'
+    BebanMingguan:
+      type: object
+      properties:
+        nim:
+          type: string
+          example: "2026001"
+        minggu:
+          type: integer
+          description: Nomor minggu dalam kalender semester
+          example: 3
+        tanggal_mulai:
+          type: string
+          format: date
+          example: "2026-09-07"
+        menit_total:
+          type: integer
+          description: Total menit instruksional terjadwal pada minggu itu
+          example: 1440
+        sks:
+          type: number
+          format: float
+          description: menit_total dibagi 85 menit per SKS, dibulatkan satu desimal
+          example: 16.9
+        kapasitas_sks:
+          type: number
+          format: float
+          description: Kapasitas SKS per semester menurut ritme mingguan
+          example: 16.9
+        hari:
+          type: array
+          items:
+            type: string
+          description: Hari yang benar-benar berjadwal; hari bebas (0 menit) tidak disebut
+          example: [Senin, Selasa, Rabu, Kamis, Jumat]
+        catatan:
+          type: string
+          description: Terisi hanya kalau ada hari di luar ritme sehingga menitnya diperkirakan dari selisih jam
+    CakupanCPL:
+      type: object
+      properties:
+        cpl_kode:
+          type: string
+          example: CPL02
+        domain:
+          type: string
+          example: Pengetahuan
+        tercapai:
+          type: boolean
+          example: true
+        rumpun_bukti:
+          type: array
+          items:
+            type: string
+          description: Rumpun yang sudah punya nilai lulus DAN menyentuh CPL ini; kosong berarti belum tercapai
+          example: [R1]
+    RingkasanCakupanCPL:
+      type: object
+      properties:
+        prodi_kode:
+          type: string
+          example: trpl
+        nim:
+          type: string
+          description: Terisi pada cakupan per mahasiswa, kosong pada agregat prodi
+          example: "2026001"
+        total:
+          type: integer
+          example: 11
+        tercapai:
+          type: integer
+          example: 7
+        daftar:
+          type: array
+          items:
+            $ref: '#/components/schemas/CakupanCPL'
     ProyekBlok:
       description: Instance proyek nyata di atas satu rumpun kurikulum untuk satu angkatan. Definisi mata kuliah dan CPL-nya tidak diduplikasi ke sini - ambil dari rumpun lewat rumpun_kode.
       type: object
