@@ -30,6 +30,11 @@ tags:
     description: Kalender akademik per prodi/angkatan/semester, diturunkan dari ritme mingguan kurikulum. Baca publik hanya untuk kalender yang sudah diterbitkan.
   - name: proyekkerja
     description: Modul Proyek Kerja/Magang - proyek semester-panjang di tempat kerja mahasiswa, disetujui dosen lalu ditinjau dua pihak (dosen dan atasan) pada tengah dan akhir semester.
+  - name: kuisgerbang
+    description: >-
+      Kuis atas materi asinkron yang wajib ditempuh mahasiswa sebelum sesi tatap muka.
+      Modul ini TIDAK menahan akses ke sesi - ia hanya menyediakan status lulus untuk
+      dicek modul lain. Kunci jawaban tidak pernah ikut terkirim saat soal diambil.
   - name: akademik
     description: Roster mahasiswa - sumber identitas akademik bersama yang dipakai modul dasbor, blok/proyek, dan proyek kerja. Diisi pengelola prodi, bukan pendaftaran mandiri.
   - name: device
@@ -1224,6 +1229,216 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /kuisgerbang:
+    post:
+      tags:
+        - kuisgerbang
+      summary: Susun kuis gerbang satu rumpun satu minggu
+      description: >-
+        Hanya dosen atau admin. Satu rumpun hanya boleh punya satu kuis per minggu.
+        `ambang_lulus` kosong diisi 70 - ambang nol ditolak, karena nol berarti semua
+        orang lulus tanpa menjawab apa pun. Balasannya TANPA `indeks_benar`.
+      operationId: buatKuisGerbang
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KuisGerbangRequest'
+      responses:
+        '201':
+          description: Kuis tersimpan (tanpa kunci jawaban)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KuisGerbang'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen maupun admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Rumpun tidak ada di data kurikulum
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Body tidak sah, kuis minggu itu sudah ada, atau soal/kunci tidak lengkap
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /kuisgerbang/{id}/jawab:
+    post:
+      tags:
+        - kuisgerbang
+      summary: Kirim jawaban kuis
+      description: >-
+        NIM diambil server dari roster `mahasiswa` lewat nomor WhatsApp pada token,
+        BUKAN dari body - kalau NIM boleh diketik sendiri, siapa pun bisa mengerjakan
+        kuis atas nama orang lain. Skor dan kelulusan dihitung server. Mengirim ulang
+        memperbarui baris yang sama, bukan menambah baris baru.
+      operationId: jawabKuisGerbang
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+          description: ObjectID kuis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jawaban_idx:
+                  type: array
+                  description: Indeks pilihan (mulai 0) per soal, urutannya sama dengan `soal`
+                  items:
+                    type: integer
+                  example: [0, 1, 1, 1]
+      responses:
+        '200':
+          description: Jawaban dinilai
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JawabanKuis'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kuis tidak ada, atau nomor pada token belum terdaftar di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Jumlah jawaban tidak sama dengan jumlah soal, atau ada indeks di luar pilihan yang tersedia
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /kuisgerbang/{prodi}/{rumpun}/{minggu}:
+    get:
+      tags:
+        - kuisgerbang
+      summary: Ambil soal kuis
+      description: >-
+        Balasannya TIDAK PERNAH memuat `indeks_benar` - kunci jawaban dibuang eksplisit
+        di server, bukan sekadar disembunyikan lewat tag JSON.
+      operationId: soalKuisGerbang
+      parameters:
+        - in: path
+          name: prodi
+          schema:
+            type: string
+          required: true
+          description: Kode prodi
+        - in: path
+          name: rumpun
+          schema:
+            type: string
+          required: true
+          description: Kode rumpun
+        - in: path
+          name: minggu
+          schema:
+            type: integer
+          required: true
+          description: Minggu ke berapa, mulai 1
+      responses:
+        '200':
+          description: Soal tanpa kunci jawaban
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KuisGerbang'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Belum ada kuis untuk rumpun dan minggu itu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Minggu bukan angka yang sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /mahasiswa/{nim}/kuisgerbang:
+    get:
+      tags:
+        - kuisgerbang
+      summary: Status kuis seorang mahasiswa
+      description: >-
+        Dosen/admin boleh melihat siapa pun; mahasiswa hanya dirinya sendiri.
+        Dipakai untuk tahu siapa yang belum lulus sebelum sesi tatap muka.
+      operationId: statusKuisMahasiswa
+      parameters:
+        - in: path
+          name: nim
+          schema:
+            type: string
+          required: true
+        - in: query
+          name: minggu
+          schema:
+            type: integer
+          required: false
+          description: Saring per minggu; kosong berarti seluruh minggu
+      responses:
+        '200':
+          description: Ringkasan pengerjaan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusKuisMahasiswa'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Mahasiswa meminta status NIM orang lain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: NIM tidak ada di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /dasbor/cpl/{nim}:
     get:
       tags:
@@ -2266,6 +2481,153 @@ components:
         selesai_minggu:
           type: integer
           example: 8
+    KuisGerbang:
+      description: >-
+        Kuis gerbang satu rumpun pada satu minggu. Dalam balasan API, `soal` TIDAK
+        PERNAH memuat `indeks_benar` - kunci jawaban dibuang di server sebelum dikirim.
+      type: object
+      properties:
+        id:
+          type: string
+          example: 66f1a2b3c4d5e6f7a8b9c0d1
+        prodi_kode:
+          type: string
+          example: trpl
+        rumpun_kode:
+          type: string
+          example: R1
+        minggu:
+          type: integer
+          example: 3
+        judul:
+          type: string
+          example: Literasi Digital pekan 3
+        ambang_lulus:
+          type: number
+          format: double
+          description: Persen 0-100. Kosong saat dibuat diisi 70; nol ditolak.
+          example: 70
+        dibuat_oleh:
+          type: string
+          readOnly: true
+          description: NIP dosen penyusun, diisi server dari token
+        soal:
+          type: array
+          items:
+            $ref: '#/components/schemas/SoalKuis'
+    SoalKuis:
+      description: Satu butir pilihan ganda. `indeks_benar` hanya ada pada permintaan penyusunan, tidak pernah pada balasan.
+      type: object
+      properties:
+        pertanyaan:
+          type: string
+          example: Port standar HTTPS?
+        pilihan:
+          type: array
+          items:
+            type: string
+          example: ["80", "443", "22"]
+    SoalKuisRequest:
+      description: Bentuk soal saat dosen menyusun kuis - di sini `indeks_benar` wajib.
+      type: object
+      required:
+        - pertanyaan
+        - pilihan
+        - indeks_benar
+      properties:
+        pertanyaan:
+          type: string
+          example: Port standar HTTPS?
+        pilihan:
+          type: array
+          description: Minimal 2 pilihan, tidak boleh ada yang kosong
+          items:
+            type: string
+          example: ["80", "443", "22"]
+        indeks_benar:
+          type: integer
+          description: Indeks jawaban benar di dalam `pilihan`, mulai 0
+          example: 1
+    KuisGerbangRequest:
+      type: object
+      required:
+        - prodi_kode
+        - rumpun_kode
+        - minggu
+        - soal
+      properties:
+        prodi_kode:
+          type: string
+          example: trpl
+        rumpun_kode:
+          type: string
+          example: R1
+        minggu:
+          type: integer
+          example: 3
+        judul:
+          type: string
+          example: Literasi Digital pekan 3
+        ambang_lulus:
+          type: number
+          format: double
+          example: 70
+        soal:
+          type: array
+          items:
+            $ref: '#/components/schemas/SoalKuisRequest'
+    JawabanKuis:
+      description: Satu pengerjaan oleh satu mahasiswa atas satu kuis, disimpan per (kuis, nim).
+      type: object
+      properties:
+        id:
+          type: string
+        kuis_id:
+          type: string
+        nim:
+          type: string
+          readOnly: true
+          description: Diisi server dari roster lewat nomor WhatsApp pada token, bukan dari body
+          example: "2026001"
+        jawaban_idx:
+          type: array
+          items:
+            type: integer
+        benar:
+          type: integer
+          example: 3
+        total:
+          type: integer
+          example: 4
+        skor:
+          type: number
+          format: double
+          description: Persen 0-100, dibulatkan dua desimal, dihitung server
+          example: 75
+        lulus:
+          type: boolean
+          example: true
+    StatusKuisMahasiswa:
+      type: object
+      properties:
+        nim:
+          type: string
+        minggu:
+          type: integer
+          description: Saringan minggu yang dipakai; tidak muncul kalau seluruh minggu
+        jawaban:
+          type: array
+          items:
+            $ref: '#/components/schemas/JawabanKuis'
+        lulus:
+          type: integer
+          example: 2
+        total:
+          type: integer
+          example: 3
+        semua_lulus:
+          type: boolean
+          example: false
     MataKuliah:
       description: >-
         Satu mata kuliah kurikulum, milik satu rumpun. Diturunkan dari
