@@ -30,6 +30,8 @@ tags:
     description: Kalender akademik per prodi/angkatan/semester, diturunkan dari ritme mingguan kurikulum. Baca publik hanya untuk kalender yang sudah diterbitkan.
   - name: proyekkerja
     description: Modul Proyek Kerja/Magang - proyek semester-panjang di tempat kerja mahasiswa, disetujui dosen lalu ditinjau dua pihak (dosen dan atasan) pada tengah dan akhir semester.
+  - name: akademik
+    description: Roster mahasiswa - sumber identitas akademik bersama yang dipakai modul dasbor, blok/proyek, dan proyek kerja. Diisi pengelola prodi, bukan pendaftaran mandiri.
   - name: device
     description: Set whatsapp yg digunakan
     externalDocs:
@@ -572,6 +574,78 @@ paths:
                 $ref: '#/components/schemas/DetailError'
         '404':
           description: Kalender tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /mahasiswa:
+    post:
+      tags:
+        - akademik
+      summary: Tambah atau perbarui satu baris roster mahasiswa
+      description: Upsert berdasarkan NIM. Ini bukan pendaftaran pengguna - mahasiswa tidak mendaftar sendiri, pengelola prodi yang mengisi. Nomor WhatsApp di sini yang menghubungkan identitas WhatsAuth ke identitas akademik, dan koleksi inilah sumber identitas yang dipakai modul dasbor, blok/proyek, serta proyek kerja.
+      operationId: simpanMahasiswa
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Mahasiswa'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mahasiswa'
+        '401':
+          description: Bukan dosen atau token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Validasi gagal - nim, nama, prodi_kode, atau angkatan kosong, semester di luar rentang wajar, atau status tidak dikenal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+    get:
+      tags:
+        - akademik
+      summary: Daftar roster mahasiswa
+      description: Filter opsional per prodi dan angkatan. Hanya dosen - roster memuat nomor WhatsApp dan surel mahasiswa.
+      operationId: daftarMahasiswa
+      parameters:
+        - in: query
+          name: prodi
+          schema:
+            type: string
+          required: false
+          example: trpl
+        - in: query
+          name: angkatan
+          schema:
+            type: string
+          required: false
+          example: "2026"
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mahasiswa:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Mahasiswa'
+        '401':
+          description: Bukan dosen atau token tidak sah
           content:
             application/json:
               schema:
@@ -2092,6 +2166,39 @@ components:
             NIM di GET /mahasiswa/{nim}/nilai dibuktikan lewat roster, bukan lewat
             nomor yang tersimpan di dokumen proyek ini.
           example: "6281234567890"
+    Mahasiswa:
+      description: Satu baris roster akademik. Bukan akun - autentikasi tetap WhatsAuth, dan phonenumber di sini yang menghubungkan token ke identitas akademik.
+      type: object
+      properties:
+        id:
+          type: string
+        nim:
+          type: string
+          description: Kunci akademik, unik
+          example: "2026001"
+        nama:
+          type: string
+          example: Budi Santoso
+        phonenumber:
+          type: string
+          description: Nomor WhatsApp yang dipakai login WhatsAuth
+          example: "6281234567890"
+        email:
+          type: string
+        prodi_kode:
+          type: string
+          example: trpl
+        angkatan:
+          type: string
+          example: "2026"
+        semester:
+          type: integer
+          description: Semester berjalan, dipakai memilih kalender akademik yang berlaku
+          example: 5
+        status:
+          type: string
+          enum: [aktif, cuti, lulus, keluar]
+          example: aktif
     TautanTinjauan:
       description: Tautan sekali-pakai untuk atasan, diterbitkan dosen lalu diteruskan sendiri ke atasan.
       type: object
