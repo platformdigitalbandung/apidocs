@@ -28,6 +28,8 @@ tags:
       url: https://github.com/whatsauth/webhook
   - name: kalender
     description: Kalender akademik per prodi/angkatan/semester, diturunkan dari ritme mingguan kurikulum. Baca publik hanya untuk kalender yang sudah diterbitkan.
+  - name: proyekkerja
+    description: Modul Proyek Kerja/Magang - proyek semester-panjang di tempat kerja mahasiswa, disetujui dosen lalu ditinjau dua pihak (dosen dan atasan) pada tengah dan akhir semester.
   - name: device
     description: Set whatsapp yg digunakan
     externalDocs:
@@ -568,6 +570,270 @@ paths:
                 $ref: '#/components/schemas/DetailError'
         '404':
           description: Kalender tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /proyekkerja:
+    post:
+      tags:
+        - proyekkerja
+      summary: Ajukan proyek kerja
+      description: Mahasiswa mengajukan proyek di tempat kerjanya untuk dikonversi jadi SKS satu rumpun. Nomor WhatsApp diambil dari token, bukan dari body - itu yang jadi bukti kepemilikan NIM. Status awal diajukan; satu nim hanya boleh punya satu pengajuan yang belum ditolak per rumpun.
+      operationId: ajukanProyekKerja
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AjukanProyekKerjaRequest'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProyekKerja'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Validasi gagal - field wajib kosong, surel atasan tidak sah, semester di luar rentang, rumpun tidak ada di data kurikulum, atau pengajuan untuk rumpun itu sudah ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /proyekkerja/saya:
+    get:
+      tags:
+        - proyekkerja
+      summary: Proyek kerja milik pemegang token
+      description: Mengembalikan proyek yang dibimbing kalau nomor pada token adalah dosen yang NIP-nya sudah terisi, selain itu proyek yang diajukan sendiri.
+      operationId: proyekKerjaSaya
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProyekKerjaSaya'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /proyekkerja/{id}:
+    delete:
+      tags:
+        - proyekkerja
+      summary: Hapus pengajuan proyek kerja
+      description: Menghapus pengajuan beserta seluruh tinjauannya. Status diajukan atau ditolak langsung terhapus; status disetujui dan seterusnya perlu konfirmasi=hapus karena putusan dosen dan tinjauan yang sudah masuk ikut hilang. Tanpa endpoint ini satu nim dan rumpun yang salah ajukan terkunci selamanya, karena pengajuan kedua ditolak selama yang lama belum ditolak.
+      operationId: hapusProyekKerja
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          example: 6aa3f4f514984a96f23147dd
+        - in: query
+          name: konfirmasi
+          required: false
+          schema:
+            type: string
+            enum: [hapus]
+          description: Wajib diisi hapus untuk proyek yang sudah disetujui atau berjalan
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  dihapus:
+                    type: string
+                    example: 6aa3f4f514984a96f23147dd
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Proyek kerja ini bukan milik pemegang token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Proyek kerja tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Proyek sudah disetujui atau berjalan tetapi konfirmasi=hapus tidak disertakan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+    get:
+      tags:
+        - proyekkerja
+      summary: Detail proyek kerja beserta tinjauannya
+      description: Dosen dan admin boleh melihat proyek mana pun; mahasiswa hanya proyek miliknya sendiri, dibuktikan nomor WhatsApp yang tercatat saat pengajuan. Field nilai_akhir hanya muncul kalau tinjauan akhir dari kedua penilai sudah masuk.
+      operationId: detailProyekKerja
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          example: 6aa3f4f514984a96f23147dd
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proyek:
+                    $ref: '#/components/schemas/ProyekKerja'
+                  tinjauan:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TinjauanProyekKerja'
+                  nilai_akhir:
+                    type: number
+                    format: double
+                    example: 85.5
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Proyek kerja ini bukan milik pemegang token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Proyek kerja tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /proyekkerja/{id}/putusan:
+    post:
+      tags:
+        - proyekkerja
+      summary: Putusan dosen atas pengajuan
+      description: Menyetujui atau menolak pengajuan. Dinamai putusan, bukan setuju, karena endpoint ini juga dipakai menolak. Penolakan wajib disertai catatan alasan, dan putusan hanya berlaku untuk pengajuan yang masih berstatus diajukan.
+      operationId: putusanProyekKerja
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          example: 6aa3f4f514984a96f23147dd
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutusanProyekKerjaRequest'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProyekKerja'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen, atau NIP dosen belum diisi di data dosen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Pengajuan sudah diputuskan sebelumnya, atau penolakan tanpa catatan alasan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /proyekkerja/{id}/tinjauan:
+    post:
+      tags:
+        - proyekkerja
+      summary: Kirim tinjauan tengah atau akhir
+      description: Menyimpan tinjauan dosen lalu memperbarui status proyek dari kelengkapan tinjauannya - status hanya naik kalau kedua pihak (dosen dan atasan) sudah menilai pada titik waktu itu. Satu peran hanya punya satu tinjauan per jenis, mengirim ulang berarti memperbarui. Jalur atasan lewat tautan sekali pakai belum tersedia.
+      operationId: tinjauanProyekKerja
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          example: 6aa3f4f514984a96f23147dd
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TinjauanProyekKerjaRequest'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proyek:
+                    $ref: '#/components/schemas/ProyekKerja'
+                  tinjauan:
+                    $ref: '#/components/schemas/TinjauanProyekKerja'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Jenis/peran/skor tidak sah, atau proyek berstatus belum disetujui atau sudah selesai
           content:
             application/json:
               schema:
@@ -1475,6 +1741,154 @@ components:
           type: string
           description: Nomor WhatsApp anggota - dipakai untuk WhatsAuth dan notifikasi, sekaligus jadi bukti kepemilikan NIM di GET /mahasiswa/{nim}/nilai
           example: "6281234567890"
+    ProyekKerja:
+      description: Proyek semester-panjang di tempat kerja mahasiswa, dikonversi jadi SKS satu rumpun kurikulum.
+      type: object
+      properties:
+        id:
+          type: string
+          example: 6aa3f4f514984a96f23147dd
+        nim:
+          type: string
+          example: "2026001"
+        phonenumber:
+          type: string
+          description: Diisi server dari token WhatsAuth saat pengajuan - bukti kepemilikan NIM
+          example: "6281234567890"
+        prodi_kode:
+          type: string
+          example: trpl
+        semester:
+          type: integer
+          example: 5
+        rumpun_kode:
+          type: string
+          example: R11
+        nama_perusahaan:
+          type: string
+          example: PT Contoh Nusantara
+        judul_pekerjaan:
+          type: string
+          example: Modul penagihan otomatis
+        deskripsi:
+          type: string
+        dosen_nip:
+          type: string
+          description: Diisi saat dosen memutuskan pengajuan
+          example: "198501012010011001"
+        atasan_nama:
+          type: string
+          example: Ibu Atasan
+        atasan_email:
+          type: string
+          example: atasan@contoh.co.id
+        atasan_phonenumber:
+          type: string
+        status:
+          type: string
+          enum: [diajukan, disetujui, berjalan, tinjauan-tengah, selesai, ditolak]
+          example: diajukan
+        catatan:
+          type: string
+          description: Alasan penolakan atau catatan putusan dosen
+    TinjauanProyekKerja:
+      description: Satu tinjauan dari satu penilai pada satu titik waktu. Satu peran hanya punya satu tinjauan per jenis.
+      type: object
+      properties:
+        id:
+          type: string
+        proyek_kerja_id:
+          type: string
+        jenis:
+          type: string
+          enum: [tengah-semester, akhir]
+        penilai_peran:
+          type: string
+          enum: [dosen, atasan]
+        penilai_nama:
+          type: string
+        skor:
+          type: number
+          format: double
+          example: 88
+        catatan:
+          type: string
+        bukti_url:
+          type: array
+          items:
+            type: string
+    AjukanProyekKerjaRequest:
+      type: object
+      properties:
+        nim:
+          type: string
+          example: "2026001"
+        prodi_kode:
+          type: string
+          example: trpl
+        semester:
+          type: integer
+          example: 5
+        rumpun_kode:
+          type: string
+          example: R11
+        nama_perusahaan:
+          type: string
+          example: PT Contoh Nusantara
+        judul_pekerjaan:
+          type: string
+          example: Modul penagihan otomatis
+        deskripsi:
+          type: string
+        atasan_nama:
+          type: string
+          example: Ibu Atasan
+        atasan_email:
+          type: string
+          example: atasan@contoh.co.id
+        atasan_phonenumber:
+          type: string
+    PutusanProyekKerjaRequest:
+      type: object
+      properties:
+        setuju:
+          type: boolean
+          example: true
+        catatan:
+          type: string
+          description: Wajib diisi kalau menolak
+    TinjauanProyekKerjaRequest:
+      type: object
+      properties:
+        jenis:
+          type: string
+          enum: [tengah-semester, akhir]
+        penilai_nama:
+          type: string
+        skor:
+          type: number
+          format: double
+          example: 88
+        catatan:
+          type: string
+        bukti_url:
+          type: array
+          items:
+            type: string
+    ProyekKerjaSaya:
+      description: Proyek kerja milik pemegang token - yang dibimbing (dosen) atau yang diajukan sendiri (mahasiswa).
+      type: object
+      properties:
+        peran:
+          type: string
+          enum: [dosen, mahasiswa]
+        nip:
+          type: string
+          description: Diisi hanya untuk dosen
+        proyekkerja:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProyekKerja'
     KalenderSemester:
       description: Kalender satu semester untuk satu prodi dan angkatan, diturunkan dari ritme mingguan kurikulum.
       type: object
