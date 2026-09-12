@@ -1808,6 +1808,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
+        '422':
+          description: >-
+            Prodi mahasiswa ini belum punya satu pun CPL terdaftar di koleksi
+            `cpl`. Dibedakan dari 404 karena tindakannya berbeda - yang kurang
+            datanya, bukan NIM-nya.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '404':
           description: NIM tidak ada di roster mahasiswa
           content:
@@ -1841,6 +1850,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RingkasanCakupanCPL'
+        '422':
+          description: >-
+            Prodi ini ada, tetapi belum punya satu pun CPL terdaftar di koleksi
+            `cpl`. Bisnis Digital persis dalam keadaan ini - 14 rumpun, nol CPL.
+            Tanpa pembedaan ini jawabannya 200 dengan total 0 dan tercapai 0,
+            dan "0 dari 0 CPL tercakup" di halaman akreditasi terbaca seperti
+            fakta, bukan seperti data yang belum diisi.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '404':
           description: >-
             Kode prodi tidak ada di data kurikulum. Sengaja dibedakan dari 200
@@ -2749,6 +2769,22 @@ components:
             type: string
           description: Rumpun yang sudah punya nilai lulus DAN menyentuh CPL ini; kosong berarti belum tercapai
           example: [R1]
+        status:
+          type: string
+          enum: [tercapai, belum, ditopang-jalur-lain]
+          description: >-
+            Memisahkan "belum tercapai" dari "di luar jangkauan perhitungan ini".
+            `belum` = dipetakan ke rumpun tapi rumpunnya belum punya nilai lulus.
+            `ditopang-jalur-lain` = tidak dipetakan ke rumpun mana pun, jadi
+            berapa pun nilai yang masuk ia tidak akan pernah tercapai lewat jalur
+            ini - buktinya ada di jalur kontinu/KKN/Magang/TA (lihat penopang_lain).
+          example: tercapai
+        penopang_lain:
+          type: array
+          items:
+            type: string
+          description: Diisi untuk CPL yang ditopang di luar penilaian proyek blok
+          example: [jalur kontinu, KKN Tematik]
     RingkasanCakupanCPL:
       type: object
       properties:
@@ -2761,10 +2797,23 @@ components:
           example: "2026001"
         total:
           type: integer
+          description: Seluruh CPL prodi ini
           example: 11
         tercapai:
           type: integer
+          description: >-
+            JANGAN dibaca sebagai "tercapai dari total" - penyebut yang benar
+            adalah dapat_dinilai. Sebagian CPL sengaja tidak dipetakan ke rumpun
+            mana pun sehingga tidak akan pernah masuk hitungan ini.
           example: 7
+        dapat_dinilai:
+          type: integer
+          description: total dikurangi ditopang_jalur_lain - jumlah CPL yang memang bisa dibuktikan dari nilai proyek blok
+          example: 10
+        ditopang_jalur_lain:
+          type: integer
+          description: Jumlah CPL yang tidak dipetakan ke rumpun mana pun (mis. CPL01 TRPL)
+          example: 1
         daftar:
           type: array
           items:
@@ -3158,10 +3207,6 @@ components:
           example: 88
         catatan:
           type: string
-        bukti_url:
-          type: array
-          items:
-            type: string
     ProyekKerja:
       description: Proyek semester-panjang di tempat kerja mahasiswa, dikonversi jadi SKS satu rumpun kurikulum.
       type: object
@@ -3234,10 +3279,6 @@ components:
           example: 88
         catatan:
           type: string
-        bukti_url:
-          type: array
-          items:
-            type: string
     AjukanProyekKerjaRequest:
       type: object
       properties:
@@ -3292,10 +3333,6 @@ components:
           example: 88
         catatan:
           type: string
-        bukti_url:
-          type: array
-          items:
-            type: string
     ProyekKerjaSaya:
       description: Proyek kerja milik pemegang token - yang dibimbing (dosen) atau yang diajukan sendiri (mahasiswa).
       type: object
