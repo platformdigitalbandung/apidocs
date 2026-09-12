@@ -2068,17 +2068,29 @@ components:
           type: integer
           example: 8
     AnggotaProyek:
+      description: >-
+        Anggota proyek. Hanya `nim` yang bermakna sebagai masukan - ia kunci asing
+        ke koleksi `mahasiswa`. `nama` dan `phonenumber` adalah cuplikan yang
+        diselaraskan server dari roster saat proyek disimpan; nilai yang dikirim
+        klien untuk kedua field itu diabaikan kalau NIM-nya sudah ada di roster.
       type: object
       properties:
         nim:
           type: string
+          description: Kunci asing ke koleksi `mahasiswa`. Prodi anggota harus sama dengan prodi proyek.
           example: "2026001"
         nama:
           type: string
+          readOnly: true
+          description: Cuplikan dari roster - bukan masukan.
           example: Budi Santoso
         phonenumber:
           type: string
-          description: Nomor WhatsApp anggota - dipakai untuk WhatsAuth dan notifikasi, sekaligus jadi bukti kepemilikan NIM di GET /mahasiswa/{nim}/nilai
+          readOnly: true
+          description: >-
+            Cuplikan nomor WhatsApp dari roster, dipakai untuk notifikasi. Kepemilikan
+            NIM di GET /mahasiswa/{nim}/nilai dibuktikan lewat roster, bukan lewat
+            nomor yang tersimpan di dokumen proyek ini.
           example: "6281234567890"
     TautanTinjauan:
       description: Tautan sekali-pakai untuk atasan, diterbitkan dosen lalu diteruskan sendiri ke atasan.
