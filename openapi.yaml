@@ -435,6 +435,53 @@ paths:
       security:
         - dosenToken: []
   /kalender/{id}:
+    delete:
+      tags:
+        - kalender
+      summary: Hapus kalender (hanya selagi draft)
+      description: Menghapus kalender yang masih draft - dipakai membatalkan rencana yang salah atau membersihkan kalender percobaan. Kalender yang sudah diterbitkan ditolak karena mahasiswa sudah melihatnya, jadi pembatalannya lewat pengumuman, bukan penghapusan diam-diam.
+      operationId: hapusKalender
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          example: 6aa3f4f514984a96f23147dd
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  dihapus:
+                    type: string
+                    example: 6aa3f4f514984a96f23147dd
+        '401':
+          description: Bukan dosen atau token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kalender tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Kalender sudah diterbitkan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
     put:
       tags:
         - kalender
