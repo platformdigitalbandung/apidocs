@@ -771,6 +771,73 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /mahasiswa/{nim}:
+    delete:
+      tags:
+        - akademik
+      summary: Hapus satu baris roster mahasiswa
+      description: >-
+        Menghapus HANYA baris rosternya. Nilai proyek blok, jawaban kuis
+        gerbang, kehadiran ujian, pengajuan proyek kerja, dan pengajuan RPL
+        milik NIM itu sengaja tidak ikut terhapus - itu catatan akademik dan
+        bukti akreditasi. Akibatnya dokumen tersebut jadi yatim: NIM-nya tetap
+        tersimpan tapi tidak bisa lagi diterjemahkan jadi nama, prodi, atau
+        nomor WhatsApp. Karena itu NIM yang masih dirujuk ditolak 422 sampai
+        diulang dengan konfirmasi=hapus. Untuk mahasiswa yang lulus atau
+        berhenti, yang benar adalah mengubah status lewat POST /mahasiswa,
+        bukan menghapus barisnya.
+      operationId: hapusMahasiswa
+      parameters:
+        - in: path
+          name: nim
+          schema:
+            type: string
+          required: true
+          example: "9999001"
+        - in: query
+          name: konfirmasi
+          schema:
+            type: string
+            enum: [hapus]
+          required: false
+          description: Wajib diisi hapus kalau NIM ini masih dirujuk modul lain.
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  dihapus:
+                    type: string
+                    example: "9999001"
+                  rujukan_tertinggal:
+                    type: string
+                    description: Hanya muncul kalau penghapusan dipaksa dengan konfirmasi=hapus; menyebut dokumen yatim yang ditinggalkan.
+                    example: 3 nilai proyek blok, 1 pengajuan proyek kerja
+        '401':
+          description: Bukan dosen atau token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: NIM tidak ada di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: NIM masih dirujuk modul lain dan konfirmasi=hapus belum diberikan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /proyekkerja:
     post:
       tags:
