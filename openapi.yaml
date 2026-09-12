@@ -39,6 +39,11 @@ tags:
     description: >-
       Asesmen berpengawas - jadwal ujian di kampus beserta pencatatan kehadirannya.
       Bukan proctoring otomatis. Skor ujiannya diinput dosen lewat Modul Blok/Proyek.
+  - name: rpl
+    description: >-
+      Rekognisi Pembelajaran Lampau - pengakuan pengalaman kerja SEBELUM masuk kuliah
+      jadi kredit satu rumpun. Beda dari Proyek Kerja/Magang yang untuk proyek selama
+      kuliah berjalan.
   - name: akademik
     description: Roster mahasiswa - sumber identitas akademik bersama yang dipakai modul dasbor, blok/proyek, dan proyek kerja. Diisi pengelola prodi, bukan pendaftaran mandiri.
   - name: device
@@ -1525,6 +1530,180 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /rpl:
+    post:
+      tags:
+        - rpl
+      summary: Ajukan RPL + unggah bukti
+      description: >-
+        Multipart/form-data. NIM diambil server dari roster `mahasiswa` lewat nomor
+        WhatsApp pada token, bukan dari body. Status awal selalu `diajukan`. Berkas
+        bukti opsional; kegagalan unggah tidak membatalkan pengajuannya.
+      operationId: ajukanRPL
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - rumpun_target
+                - deskripsi
+              properties:
+                rumpun_target:
+                  type: string
+                  description: Kode rumpun yang mau dikonversi
+                  example: R11
+                deskripsi:
+                  type: string
+                  example: 3 tahun sebagai backend engineer di PT Contoh
+                bukti:
+                  type: array
+                  description: Portofolio, sertifikat, referensi kerja
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '201':
+          description: Pengajuan tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PengajuanRPL'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Nomor pada token belum terdaftar di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: rumpun_target atau deskripsi kosong
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /rpl/{id}/tinjau:
+    post:
+      tags:
+        - rpl
+      summary: Setuju/tolak pengajuan RPL
+      description: >-
+        Hanya dosen atau admin. `status` harus salah satu dari `ditinjau`,
+        `disetujui`, `ditolak` - `diajukan` tidak bisa dipilih peninjau karena itu
+        status yang diberikan sistem saat pengajuan dibuat.
+      operationId: tinjauRPL
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - ditinjau
+                    - disetujui
+                    - ditolak
+                catatan:
+                  type: string
+                  example: Pengalaman relevan, disetujui penuh
+      responses:
+        '200':
+          description: Putusan tercatat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PengajuanRPL'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen maupun admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Pengajuan RPL tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Status tidak bisa dipilih peninjau
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /mahasiswa/{nim}/rpl:
+    get:
+      tags:
+        - rpl
+      summary: Riwayat pengajuan RPL
+      description: Dosen/admin boleh melihat siapa pun; mahasiswa hanya dirinya sendiri.
+      operationId: riwayatRPL
+      parameters:
+        - in: path
+          name: nim
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Seluruh pengajuan NIM itu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nim:
+                    type: string
+                  rpl:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PengajuanRPL'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Mahasiswa meminta riwayat NIM orang lain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: NIM tidak ada di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /dasbor/cpl/{nim}:
     get:
       tags:
@@ -2699,6 +2878,58 @@ components:
           type: string
           readOnly: true
           description: NIP pengawas yang check-in manual; admin tanpa NIP tercatat sebagai `wa:<nomor>`
+    StorageRef:
+      description: >-
+        Referensi berkas di repo storage GitHub privat. Yang disimpan ke database
+        hanya ini, bukan isi berkasnya (pdb/README.md poin 8).
+      type: object
+      properties:
+        repo:
+          type: string
+          example: platformdigitalbandung/storage
+        path:
+          type: string
+          example: rpl/66f1a2b3c4d5e6f7a8b9c0d1/sertifikat.pdf
+        sha:
+          type: string
+          example: e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+    PengajuanRPL:
+      description: >-
+        Pengakuan pengalaman kerja sebelum masuk kuliah jadi kredit satu rumpun.
+      type: object
+      properties:
+        id:
+          type: string
+        nim:
+          type: string
+          readOnly: true
+          description: Diisi server dari roster lewat nomor WhatsApp pada token
+          example: "2026TRPL001"
+        rumpun_target:
+          type: string
+          example: R11
+        deskripsi:
+          type: string
+        bukti_url:
+          type: array
+          description: >-
+            Referensi berkas di repo storage GitHub privat (repo/path/sha), bukan isi
+            berkasnya - pdb/README.md poin 8.
+          items:
+            $ref: '#/components/schemas/StorageRef'
+        status:
+          type: string
+          enum:
+            - diajukan
+            - ditinjau
+            - disetujui
+            - ditolak
+        dinilai_oleh:
+          type: string
+          readOnly: true
+          description: NIP peninjau; admin tanpa NIP tercatat sebagai `wa:<nomor>`
+        catatan:
+          type: string
     MataKuliah:
       description: >-
         Satu mata kuliah kurikulum, milik satu rumpun. Diturunkan dari
