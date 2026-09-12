@@ -1,4 +1,8 @@
-# Dokumentasi OpenAPI WhatsAuth
+# Dokumentasi OpenAPI Platform Digital Bandung
 
-[Editor](https://editor.swagger.io/) dan [URL](https://wa.my.id/apidocs/openapi.yaml)
+Dokumentasi API backend `apk.fly.dev`, di-serve lewat GitHub Pages di
+[platform.digitalbdg.ac.id/apidocs/](https://platform.digitalbdg.ac.id/apidocs/).
+
+- Berkasnya: [`openapi.yaml`](https://platform.digitalbdg.ac.id/apidocs/openapi.yaml)
+- Bisa ditempel ke [Swagger Editor](https://editor.swagger.io/) kalau mau dicoba interaktif.
 
