@@ -23,11 +23,11 @@ servers:
 tags:
   - name: botregister
     description: Pendaftaran nomor bot WhatsApp atau refresh token, disertai URL dan Secret WebHook. Bukan pendaftaran pengguna aplikasi - identitas orang datang dari WhatsAuth.
-  - name: kalender
-    description: Kalender akademik per prodi/angkatan/semester, diturunkan dari ritme mingguan kurikulum. Baca publik hanya untuk kalender yang sudah diterbitkan.
     externalDocs:
       description: Contoh Kode WebHook
       url: https://github.com/whatsauth/webhook
+  - name: kalender
+    description: Kalender akademik per prodi/angkatan/semester, diturunkan dari ritme mingguan kurikulum. Baca publik hanya untuk kalender yang sudah diterbitkan.
   - name: device
     description: Set whatsapp yg digunakan
     externalDocs:
@@ -438,8 +438,8 @@ paths:
     delete:
       tags:
         - kalender
-      summary: Hapus kalender (hanya selagi draft)
-      description: Menghapus kalender yang masih draft - dipakai membatalkan rencana yang salah atau membersihkan kalender percobaan. Kalender yang sudah diterbitkan ditolak karena mahasiswa sudah melihatnya, jadi pembatalannya lewat pengumuman, bukan penghapusan diam-diam.
+      summary: Hapus kalender
+      description: Menghapus kalender - dipakai membatalkan rencana yang salah atau membersihkan kalender percobaan. Draft langsung terhapus. Kalender yang sudah diterbitkan hanya terhapus kalau konfirmasi=terbit disertakan, karena mahasiswa sudah melihatnya dan pembatalannya perlu diumumkan.
       operationId: hapusKalender
       parameters:
         - in: path
@@ -448,6 +448,13 @@ paths:
           schema:
             type: string
           example: 6aa3f4f514984a96f23147dd
+        - in: query
+          name: konfirmasi
+          required: false
+          schema:
+            type: string
+            enum: [terbit]
+          description: Wajib diisi terbit untuk menghapus kalender yang sudah diterbitkan
       responses:
         '200':
           description: successful operation
@@ -475,7 +482,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
-          description: Kalender sudah diterbitkan
+          description: Kalender sudah diterbitkan tetapi konfirmasi=terbit tidak disertakan
           content:
             application/json:
               schema:
@@ -889,32 +896,6 @@ paths:
       summary: Pendaftaran nomor bot WhatsApp atau refresh access token
       description: Mendaftarkan/memperbarui webhook satu nomor BOT WhatsApp beserta token API 30 hari. Ini bukan pendaftaran pengguna aplikasi - platform ini tidak punya pendaftaran pengguna, identitas orang datang dari WhatsAuth. Dokumennya disimpan di koleksi Mongo "bot" (nama lama "user").
       operationId: botRegister
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/WebHook'
-      responses:
-        '200':
-          description: successful operation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BotAccount'
-        '405':
-          description: Invalid input
-      security:
-        - token:
-            - write:apiKey
-            - read:apiKey
-  /signup:
-    post:
-      deprecated: true
-      tags:
-        - botregister
-      summary: (usang) Alias lama /botregister
-      description: Nama lama yang menyesatkan - endpoint ini mendaftarkan nomor bot, bukan pengguna aplikasi. Masih dilayani sementara supaya onboarding yang sudah berjalan tidak putus; pakai POST /botregister untuk seterusnya.
-      operationId: signUpNewUser
       requestBody:
         content:
           application/json:
