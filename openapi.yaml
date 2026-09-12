@@ -580,6 +580,56 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /dosen/nip:
+    put:
+      tags:
+        - tugas
+      summary: Isi NIP dosen
+      description: Dosen hanya boleh mengisi NIP nomornya sendiri - kosongkan nohp untuk itu. Mengisi NIP dosen lain butuh peran admin, karena NIP menentukan proyek mana yang boleh dinilai seseorang. Sebelum rute ini ada, nip hanya bisa diisi lewat akses database langsung, padahal putusan proyek kerja serta pembuatan dan penilaian proyek blok semuanya berhenti tanpanya.
+      operationId: setNIPDosen
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetNIPRequest'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nohp:
+                    type: string
+                    example: "6281312000300"
+                  nama:
+                    type: string
+                  nip:
+                    type: string
+                    example: "198501012010011001"
+                  aktif:
+                    type: boolean
+        '401':
+          description: Token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen terdaftar, atau mencoba mengisi NIP dosen lain tanpa peran admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: NIP kosong, terlalu pendek, memuat spasi, atau nomor tidak terdaftar sebagai dosen aktif
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /mahasiswa:
     post:
       tags:
@@ -2166,6 +2216,16 @@ components:
             NIM di GET /mahasiswa/{nim}/nilai dibuktikan lewat roster, bukan lewat
             nomor yang tersimpan di dokumen proyek ini.
           example: "6281234567890"
+    SetNIPRequest:
+      type: object
+      properties:
+        nohp:
+          type: string
+          description: Kosongkan untuk mengisi NIP nomor sendiri. Diisi hanya oleh admin untuk dosen lain.
+          example: "6281312000300"
+        nip:
+          type: string
+          example: "198501012010011001"
     Mahasiswa:
       description: Satu baris roster akademik. Bukan akun - autentikasi tetap WhatsAuth, dan phonenumber di sini yang menghubungkan token ke identitas akademik.
       type: object
