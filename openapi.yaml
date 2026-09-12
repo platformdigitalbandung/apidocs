@@ -887,8 +887,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
+        '404':
+          description: NIM tidak ada di roster mahasiswa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '422':
-          description: NIM tidak ada di roster, kalender semester belum terbit, atau tanggal hari ini di luar rentang kalender
+          description: Kalender semester belum terbit, atau tanggal hari ini di luar rentang kalender
           content:
             application/json:
               schema:
@@ -932,8 +938,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
-        '422':
-          description: NIM tidak ada di roster
+        '404':
+          description: NIM tidak ada di roster mahasiswa
           content:
             application/json:
               schema:
@@ -965,8 +971,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RingkasanCakupanCPL'
-        '422':
-          description: Kode prodi kosong atau data kurikulumnya belum di-seed
+        '404':
+          description: >-
+            Kode prodi tidak ada di data kurikulum. Sengaja dibedakan dari 200
+            dengan ringkasan kosong: kode yang salah ketik tidak boleh terbaca
+            seperti prodi yang ada tapi belum mencapai apa pun.
           content:
             application/json:
               schema:
