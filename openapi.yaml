@@ -633,6 +633,130 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /proyekkerja/tinjauan-atasan:
+    get:
+      tags:
+        - proyekkerja
+      summary: Ringkasan proyek untuk halaman tinjauan atasan
+      description: Dipakai halaman tinjauan saat dimuat. Otorisasinya token tautan sekali-pakai, bukan WhatsAuth - atasan di kantor mahasiswa bukan pengguna platform ini. Balasannya sengaja ringkas dan tidak memuat NIM maupun nomor WhatsApp mahasiswa.
+      operationId: ringkasTinjauanAtasan
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema:
+            type: string
+          description: Token dari tautan tinjauan
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RingkasTinjauanAtasan'
+        '401':
+          description: Tautan tidak sah, bukan tautan tinjauan atasan, atau sudah kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Proyek kerja tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+    post:
+      tags:
+        - proyekkerja
+      summary: Atasan mengirim tinjauan lewat tautan
+      description: Menyimpan tinjauan sebagai penilai_peran atasan lalu memperbarui status proyek. Balasannya hanya konfirmasi - isi dokumen proyek tidak dikirim balik ke pemegang tautan. Token boleh dikirim di body atau query.
+      operationId: tinjauanAtasan
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TinjauanAtasanRequest'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  jenis:
+                    type: string
+                    example: tengah-semester
+                  skor:
+                    type: number
+                    format: double
+                    example: 88
+                  status_proyek:
+                    type: string
+                    example: tinjauan-tengah
+        '401':
+          description: Tautan tidak sah atau sudah kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Jenis atau skor tidak sah, atau proyek belum disetujui dan sudah selesai
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+  /proyekkerja/{id}/tautan-tinjauan:
+    post:
+      tags:
+        - proyekkerja
+      summary: Terbitkan tautan tinjauan untuk atasan
+      description: Dosen menerbitkan tautan sekali-pakai berumur 14 hari yang menunjuk satu proyek, lalu meneruskannya sendiri ke atasan. Platform ini belum punya pengiriman surel, dan mengirim otomatis lewat bot WhatsApp butuh nomor bot pengirim yang belum ada di konfigurasi. Tokennya memakai keypair PASETO yang sama dengan token lain.
+      operationId: tautanTinjauanProyekKerja
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          example: 6aa3f4f514984a96f23147dd
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TautanTinjauan'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Proyek kerja tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Proyek belum disetujui atau sudah selesai sehingga belum atau tidak lagi menerima tinjauan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /proyekkerja/{id}:
     delete:
       tags:
@@ -1956,6 +2080,69 @@ components:
           type: string
           description: Nomor WhatsApp anggota - dipakai untuk WhatsAuth dan notifikasi, sekaligus jadi bukti kepemilikan NIM di GET /mahasiswa/{nim}/nilai
           example: "6281234567890"
+    TautanTinjauan:
+      description: Tautan sekali-pakai untuk atasan, diterbitkan dosen lalu diteruskan sendiri ke atasan.
+      type: object
+      properties:
+        proyek_kerja_id:
+          type: string
+          example: 6aa3f4f514984a96f23147dd
+        atasan_nama:
+          type: string
+          example: Ibu Atasan
+        url:
+          type: string
+          example: https://platform.digitalbdg.ac.id/tinjauan.html?token=v4.public.xxxx
+        token:
+          type: string
+        kedaluwarsa:
+          type: string
+          format: date-time
+    RingkasTinjauanAtasan:
+      description: Tampilan proyek untuk halaman tinjauan atasan - tanpa NIM dan nomor WhatsApp mahasiswa.
+      type: object
+      properties:
+        proyek_kerja_id:
+          type: string
+        nama_perusahaan:
+          type: string
+          example: PT Contoh Nusantara
+        judul_pekerjaan:
+          type: string
+          example: Modul penagihan otomatis
+        deskripsi:
+          type: string
+        atasan_nama:
+          type: string
+          example: Ibu Atasan
+        status:
+          type: string
+          example: berjalan
+        sudah_ditinjau:
+          type: array
+          description: Jenis tinjauan yang sudah dikirim atasan ini
+          items:
+            type: string
+            enum: [tengah-semester, akhir]
+    TinjauanAtasanRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Token dari tautan tinjauan - boleh juga dikirim sebagai query
+        jenis:
+          type: string
+          enum: [tengah-semester, akhir]
+        skor:
+          type: number
+          format: double
+          example: 88
+        catatan:
+          type: string
+        bukti_url:
+          type: array
+          items:
+            type: string
     ProyekKerja:
       description: Proyek semester-panjang di tempat kerja mahasiswa, dikonversi jadi SKS satu rumpun kurikulum.
       type: object
