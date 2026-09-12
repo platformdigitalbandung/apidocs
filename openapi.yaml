@@ -35,6 +35,11 @@ tags:
       Kuis atas materi asinkron yang wajib ditempuh mahasiswa sebelum sesi tatap muka.
       Modul ini TIDAK menahan akses ke sesi - ia hanya menyediakan status lulus untuk
       dicek modul lain. Kunci jawaban tidak pernah ikut terkirim saat soal diambil.
+  - name: sesiujian
+    description: >-
+      Asesmen berpengawas - jadwal ujian di kampus beserta pencatatan kehadirannya.
+      Bukan proctoring otomatis: yang dibuktikan "diawasi & tercatat", bukan deteksi
+      kecurangan. Skor ujiannya sendiri diinput dosen lewat Modul Blok/Proyek.
   - name: akademik
     description: Roster mahasiswa - sumber identitas akademik bersama yang dipakai modul dasbor, blok/proyek, dan proyek kerja. Diisi pengelola prodi, bukan pendaftaran mandiri.
   - name: device
@@ -1439,6 +1444,198 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /sesiujian:
+    post:
+      tags:
+        - sesiujian
+      summary: Jadwalkan sesi ujian
+      description: >-
+        Hanya dosen atau admin. `tanggal_jam` dikirim sebagai teks RFC3339 beserta zona
+        waktu dan diurai eksplisit di server - masukan salah bentuk dijawab pesan yang
+        menyebut formatnya. `pengawas` kosong berarti penjadwalnya sendiri yang
+        mengawasi.
+      operationId: jadwalkanSesiUjian
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SesiUjianRequest'
+      responses:
+        '201':
+          description: Sesi terjadwal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesiUjian'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen maupun admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Rumpun tidak ada di data kurikulum
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Body tidak sah, jenis tidak dikenal, atau tanggal_jam bukan RFC3339
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+    get:
+      tags:
+        - sesiujian
+      summary: Daftar sesi ujian
+      operationId: daftarSesiUjian
+      parameters:
+        - in: query
+          name: prodi
+          schema:
+            type: string
+          required: false
+        - in: query
+          name: rumpun
+          schema:
+            type: string
+          required: false
+      responses:
+        '200':
+          description: Daftar sesi, urut terbaru dulu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sesiujian:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SesiUjian'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /sesiujian/{id}/kehadiran:
+    post:
+      tags:
+        - sesiujian
+      summary: Catat kehadiran mahasiswa di sesi ujian
+      description: >-
+        Hanya pengawas yang ditunjuk pada sesi itu, atau admin - dosen lain yang
+        terdaftar pun ditolak, karena tanpa batas itu "diawasi & tercatat" kehilangan
+        artinya. NIM divalidasi ke roster `mahasiswa`. Mencatat ulang TIDAK menulis
+        ulang `jam_masuk` (bukti waktu kedatangan); `selesai: true` mengisi
+        `jam_selesai`.
+      operationId: catatKehadiranUjian
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - nim
+              properties:
+                nim:
+                  type: string
+                  example: "2026001"
+                selesai:
+                  type: boolean
+                  description: true untuk menandai mahasiswa selesai mengerjakan
+                  example: false
+      responses:
+        '200':
+          description: Kehadiran tercatat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KehadiranUjian'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan pengawas sesi ini maupun admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Sesi ujian tidak ada, atau NIM tidak ada di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Body JSON tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+    get:
+      tags:
+        - sesiujian
+      summary: Rekap kehadiran satu sesi ujian
+      description: Hanya dosen atau admin.
+      operationId: rekapKehadiranUjian
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Sesi beserta seluruh kehadirannya
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RekapKehadiranUjian'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen maupun admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Sesi ujian tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /dasbor/cpl/{nim}:
     get:
       tags:
@@ -2628,6 +2825,116 @@ components:
         semua_lulus:
           type: boolean
           example: false
+    SesiUjian:
+      description: >-
+        Satu jadwal ujian untuk satu rumpun. `pengawas` adalah NIP di koleksi
+        `dosentugas` - kunci asing, bukan nama yang disalin, dan NIP itu pula yang
+        menentukan siapa berwenang mencatat kehadirannya.
+      type: object
+      properties:
+        id:
+          type: string
+        prodi_kode:
+          type: string
+          example: trpl
+        rumpun_kode:
+          type: string
+          example: R1
+        jenis:
+          type: string
+          enum:
+            - tengah-blok
+            - akhir-blok
+          example: akhir-blok
+        tanggal_jam:
+          type: string
+          format: date-time
+          example: "2026-11-20T09:00:00+07:00"
+        lokasi:
+          type: string
+          example: Lab 2, Gedung A
+        pengawas:
+          type: string
+          description: NIP pengawas di koleksi `dosentugas`
+          example: "198501012010121001"
+        dibuat_oleh:
+          type: string
+          readOnly: true
+          description: NIP dosen penjadwal, diisi server dari token
+    SesiUjianRequest:
+      type: object
+      required:
+        - prodi_kode
+        - rumpun_kode
+        - jenis
+        - tanggal_jam
+        - lokasi
+      properties:
+        prodi_kode:
+          type: string
+          example: trpl
+        rumpun_kode:
+          type: string
+          example: R1
+        jenis:
+          type: string
+          enum:
+            - tengah-blok
+            - akhir-blok
+        tanggal_jam:
+          type: string
+          description: RFC3339 BESERTA zona waktu - diurai eksplisit di server
+          example: "2026-11-20T09:00:00+07:00"
+        lokasi:
+          type: string
+          example: Lab 2, Gedung A
+        pengawas:
+          type: string
+          description: NIP pengawas; kosong berarti penjadwalnya sendiri
+    KehadiranUjian:
+      description: >-
+        Satu baris per (sesi, nim). Sengaja TIDAK memuat nama mahasiswa - identitasnya
+        cukup lewat NIM ke koleksi `mahasiswa`, supaya tidak ada dua sumber yang bisa
+        berbeda diam-diam saat roster diperbarui.
+      type: object
+      properties:
+        id:
+          type: string
+        sesi_ujian_id:
+          type: string
+        nim:
+          type: string
+          example: "2026001"
+        jam_masuk:
+          type: string
+          format: date-time
+          description: Bukti waktu kedatangan - tidak pernah ditulis ulang oleh pencatatan berikutnya
+        jam_selesai:
+          type: string
+          format: date-time
+          description: Hanya muncul kalau sudah ditandai selesai
+        dicatat_oleh:
+          type: string
+          readOnly: true
+          description: >-
+            NIP pengawas yang benar-benar mencatat - sengaja bukan pengawas terjadwal,
+            supaya jejak auditnya menunjuk orang yang sebenarnya. Admin tanpa NIP
+            tercatat sebagai `wa:<nomor>`.
+    RekapKehadiranUjian:
+      type: object
+      properties:
+        sesi_ujian:
+          $ref: '#/components/schemas/SesiUjian'
+        kehadiran:
+          type: array
+          items:
+            $ref: '#/components/schemas/KehadiranUjian'
+        hadir:
+          type: integer
+          example: 24
+        selesai:
+          type: integer
+          example: 22
     MataKuliah:
       description: >-
         Satu mata kuliah kurikulum, milik satu rumpun. Diturunkan dari
