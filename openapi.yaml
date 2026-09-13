@@ -76,6 +76,8 @@ tags:
     description: Data referensi kurikulum - prodi, rumpun, CPL, ritme mingguan
   - name: dasbor
     description: Dasbor mahasiswa - beban belajar mingguan dan pelacakan capaian pembelajaran (CPL)
+  - name: forum
+    description: Forum asinkron per rumpun per minggu dengan SLA respons dosen 1x24 jam yang hanya berjalan Senin-Rabu WIB
   - name: kepatuhan
     description: Laporan kepatuhan per mata kuliah untuk akreditasi - menit asinkron, daring sinkron, dan opsional luring/daring terhadap tuntutan SKS, beserta bukti penilaian dan CPL
   - name: proyekblok
@@ -2512,6 +2514,261 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /forum:
+    post:
+      tags:
+        - forum
+      summary: Mahasiswa bertanya di forum
+      description: >-
+        NIM dan prodi diambil dari roster lewat nomor WhatsApp pada token, bukan
+        dari body. Tenggat SLA dihitung saat disimpan: 24 jam yang hanya
+        berjalan Senin 00:00 - Kamis 00:00 WIB (pertanyaan Rabu 20:00 bertenggat
+        Senin 20:00; pertanyaan Kamis-Minggu mulai dihitung Senin 00:00). Judul
+        boleh dikosongkan - diambil dari awal isi. Token boleh milik mahasiswa
+        mana pun yang ada di roster.
+      operationId: tanyaForum
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TanyaForumRequest'
+      responses:
+        '201':
+          description: tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForumUtas'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor pada token bukan mahasiswa di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Rumpun tidak ada di prodi penanya, minggu di luar 1-52, isi kosong atau melebihi 4000 karakter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+    get:
+      tags:
+        - forum
+      summary: Daftar pertanyaan forum
+      description: Terbaru dulu, maksimal 200. Siapa pun dengan token WhatsAuth sah.
+      operationId: daftarForum
+      parameters:
+        - {name: prodi, in: query, required: false, schema: {type: string}, example: trpl}
+        - {name: rumpun, in: query, required: false, schema: {type: string}, example: R1}
+        - {name: minggu, in: query, required: false, schema: {type: integer}, example: 3}
+        - {name: status, in: query, required: false, schema: {type: string, enum: [terbuka, dijawab, ditutup]}}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  forum:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ForumUtas'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Status tidak dikenal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /forum/sla:
+    get:
+      tags:
+        - forum
+      summary: Ringkasan kepatuhan SLA respons dosen
+      description: >-
+        Pertanyaan terbuka yang lewat tenggat (tenggat terlama dulu), yang masih
+        menunggu dalam SLA, serta jumlah yang dijawab dosen tepat waktu dan
+        terlambat. Hanya balasan dosen pertama yang dihitung; pertanyaan yang
+        ditutup penanya tanpa jawaban dosen tidak dihitung lewat tenggat.
+        Didaftarkan sebelum /forum/{id}.
+      operationId: slaForum
+      parameters:
+        - {name: prodi, in: query, required: false, schema: {type: string}, example: trpl}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RingkasanSLAForum'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /forum/{id}:
+    get:
+      tags:
+        - forum
+      summary: Pertanyaan forum beserta seluruh balasannya
+      operationId: detailForum
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: 6aa548104ec888f562f2f2dc
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForumDetail'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Pertanyaan tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /forum/{id}/balas:
+    post:
+      tags:
+        - forum
+      summary: Membalas pertanyaan forum
+      description: >-
+        Penjawab dosen dikenali lewat NIP di data dosen; dosen yang NIP-nya belum
+        diisi ditolak, karena jawaban dosenlah yang menghentikan jam SLA dan
+        harus bisa dikaitkan ke seseorang. Mahasiswa di roster boleh membalas
+        pertanyaan dari prodinya sendiri. Balasan dosen pertama mengubah status
+        jadi dijawab dan mencatat dijawab_dosen_pada.
+      operationId: balasForum
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: 6aa548104ec888f562f2f2dc
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BalasForumRequest'
+      responses:
+        '201':
+          description: tersimpan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  balasan:
+                    $ref: '#/components/schemas/ForumBalasan'
+                  utas:
+                    $ref: '#/components/schemas/ForumUtas'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen ber-NIP, bukan mahasiswa di roster, atau mahasiswa dari prodi lain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Pertanyaan tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Pertanyaan sudah ditutup, atau isi kosong/melebihi 4000 karakter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /forum/{id}/tutup:
+    post:
+      tags:
+        - forum
+      summary: Menutup pertanyaan forum
+      operationId: tutupForum
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: 6aa548104ec888f562f2f2dc
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForumUtas'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan penanya, dosen, atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Pertanyaan tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /proyekblok:
     get:
       tags:
@@ -3438,6 +3695,69 @@ components:
             yang dinilai - laporan akreditasi harus tetap bisa menjawab CPL ini
             terbukti dari mana.
           example: [R11]
+    ForumUtas:
+      type: object
+      properties:
+        id: {type: string}
+        nim: {type: string}
+        prodi_kode: {type: string}
+        rumpun_kode: {type: string, example: R1}
+        minggu: {type: integer, example: 3}
+        judul: {type: string}
+        isi: {type: string}
+        status: {type: string, enum: [terbuka, dijawab, ditutup]}
+        dibuat: {type: string, format: date-time}
+        tenggat_sla: {type: string, format: date-time}
+        dijawab_dosen_pada: {type: string, format: date-time, description: Waktu balasan dosen pertama; tidak ada kalau belum dijawab dosen}
+        jumlah_balasan: {type: integer}
+        lewat_tenggat: {type: boolean, description: Dihitung saat dibaca}
+    ForumBalasan:
+      type: object
+      properties:
+        id: {type: string}
+        forum_id: {type: string}
+        peran: {type: string, enum: [dosen, mahasiswa]}
+        nim: {type: string, description: Hanya untuk peran mahasiswa}
+        nip: {type: string, description: Hanya untuk peran dosen}
+        isi: {type: string}
+        dibuat: {type: string, format: date-time}
+    TanyaForumRequest:
+      type: object
+      required: [rumpun_kode, minggu, isi]
+      properties:
+        rumpun_kode: {type: string, example: R1}
+        minggu: {type: integer, minimum: 1, maximum: 52, example: 3}
+        judul: {type: string, maxLength: 150, description: Opsional; kosong berarti diambil dari awal isi}
+        isi: {type: string, maxLength: 4000}
+    BalasForumRequest:
+      type: object
+      required: [isi]
+      properties:
+        isi: {type: string, maxLength: 4000}
+    ForumDetail:
+      type: object
+      properties:
+        utas: {$ref: '#/components/schemas/ForumUtas'}
+        balasan:
+          type: array
+          items: {$ref: '#/components/schemas/ForumBalasan'}
+    RingkasanSLAForum:
+      type: object
+      properties:
+        prodi_kode: {type: string}
+        sekarang: {type: string, format: date-time}
+        sla_jam: {type: integer, example: 24}
+        hari_berlaku:
+          type: array
+          items: {type: string}
+          example: [Senin, Selasa, Rabu]
+        terbuka: {type: integer}
+        menunggu_dalam_sla: {type: integer}
+        terbuka_lewat_tenggat:
+          type: array
+          items: {$ref: '#/components/schemas/ForumUtas'}
+        dijawab_tepat: {type: integer}
+        dijawab_terlambat: {type: integer}
     MenitModa:
       type: object
       description: Menit instruksional menurut moda sesi kalender. Moda yang tidak dikenal dihitung di `lain` supaya `total` utuh.
