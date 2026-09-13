@@ -76,6 +76,8 @@ tags:
     description: Data referensi kurikulum - prodi, rumpun, CPL, ritme mingguan
   - name: dasbor
     description: Dasbor mahasiswa - beban belajar mingguan dan pelacakan capaian pembelajaran (CPL)
+  - name: rekaman
+    description: Rekaman sesi daring sinkron (YouTube) dengan tenggat tengah malam setelah sesi dan rekap keterlambatan untuk kaprodi
   - name: rapor
     description: Rapor per semester dan rekap nilai dari penilaian blok/proyek - skala huruf A-E, IP/IPK dari mata kuliah yang sudah dinilai
   - name: forum
@@ -2516,6 +2518,166 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /rekaman:
+    post:
+      tags:
+        - rekaman
+      summary: Dosen menerbitkan rekaman satu sesi daring sinkron
+      description: >-
+        Hanya untuk kalender yang sudah terbit (sesi_index draft bisa bergeser)
+        dan sesi bermoda daring_sinkron yang sudah berlangsung. Tenggat =
+        tengah malam WIB setelah tanggal sesi; terlambat dicatat saat terbit.
+        Satu sesi satu rekaman - terbit kedua ditolak, hapus dulu yang lama.
+        NIP pengunggah dari data dosen lewat nomor pada token.
+      operationId: terbitkanRekaman
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TerbitkanRekamanRequest'
+      responses:
+        '201':
+          description: tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RekamanSesi'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen, atau NIP dosen belum diisi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kalender tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Kalender masih draft, sesi_index di luar rentang, sesi bukan daring sinkron, sesi belum berlangsung, url bukan YouTube, atau sesi sudah punya rekaman
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /rekaman/rekap:
+    get:
+      tags:
+        - rekaman
+      summary: Rekap keterlambatan rekaman untuk kaprodi
+      description: >-
+        Per kalender terbit yang cocok saringan: jatuh_tempo (tenggat sudah
+        lewat atau rekaman sudah terbit), terbit tepat, terbit terlambat, belum
+        ada setelah tenggat, menunggu, dan daftar sesi yang perlu perhatian.
+        Tanpa notifikasi otomatis. Didaftarkan sebelum /rekaman/kalender/{id}.
+      operationId: rekapRekaman
+      parameters:
+        - {name: prodi, in: query, required: false, schema: {type: string}, example: trpl}
+        - {name: angkatan, in: query, required: false, schema: {type: string}, example: "2026"}
+        - {name: semester, in: query, required: false, schema: {type: integer}, example: 1}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RekapRekaman'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Query semester bukan angka
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /rekaman/kalender/{id}:
+    get:
+      tags:
+        - rekaman
+      summary: Sesi daring sinkron satu kalender beserta rekamannya
+      operationId: daftarRekamanKalender
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}, example: 6aa548104ec888f562f2f2dc}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DaftarRekamanKalender'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kalender tidak ada atau belum diterbitkan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /rekaman/{id}:
+    delete:
+      tags:
+        - rekaman
+      summary: Menghapus rekaman
+      operationId: hapusRekaman
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: terhapus
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+                  dihapus: {type: string}
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Rekaman tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /rapor/prodi/{prodi}/{angkatan}/{semester}:
     get:
       tags:
@@ -3788,6 +3950,67 @@ components:
             yang dinilai - laporan akreditasi harus tetap bisa menjawab CPL ini
             terbukti dari mana.
           example: [R11]
+    RekamanSesi:
+      type: object
+      properties:
+        id: {type: string}
+        kalender_id: {type: string}
+        sesi_index: {type: integer, description: Posisi sesi di larik kalender terbit}
+        youtube_id: {type: string, example: dQw4w9WgXcQ}
+        judul: {type: string}
+        diunggah_oleh: {type: string, description: NIP dosen}
+        diterbitkan_pada: {type: string, format: date-time}
+        tenggat: {type: string, format: date-time, description: Tengah malam WIB setelah tanggal sesi}
+        terlambat: {type: boolean}
+    TerbitkanRekamanRequest:
+      type: object
+      required: [kalender_id, sesi_index, url_video]
+      properties:
+        kalender_id: {type: string}
+        sesi_index: {type: integer}
+        url_video: {type: string, description: Tautan YouTube atau ID videonya, example: "https://youtu.be/dQw4w9WgXcQ"}
+        judul: {type: string, maxLength: 150}
+    SesiRekaman:
+      type: object
+      properties:
+        sesi_index: {type: integer}
+        minggu: {type: integer}
+        tanggal: {type: string, format: date-time}
+        hari: {type: string}
+        tenggat: {type: string, format: date-time}
+        status: {type: string, enum: [terbit-tepat, terbit-terlambat, belum-ada, menunggu, belum-berlangsung]}
+        rekaman: {$ref: '#/components/schemas/RekamanSesi'}
+    DaftarRekamanKalender:
+      type: object
+      properties:
+        kalender_id: {type: string}
+        prodi_kode: {type: string}
+        angkatan: {type: string}
+        semester: {type: integer}
+        sesi:
+          type: array
+          items: {$ref: '#/components/schemas/SesiRekaman'}
+    RekapRekaman:
+      type: object
+      properties:
+        sekarang: {type: string, format: date-time}
+        kalender:
+          type: array
+          items:
+            type: object
+            properties:
+              kalender_id: {type: string}
+              prodi_kode: {type: string}
+              angkatan: {type: string}
+              semester: {type: integer}
+              jatuh_tempo: {type: integer}
+              terbit_tepat: {type: integer}
+              terbit_terlambat: {type: integer}
+              belum_ada: {type: integer}
+              menunggu: {type: integer}
+              perlu_perhatian:
+                type: array
+                items: {$ref: '#/components/schemas/SesiRekaman'}
     SkalaHuruf:
       type: object
       properties:
