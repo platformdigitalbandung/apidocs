@@ -76,6 +76,8 @@ tags:
     description: Data referensi kurikulum - prodi, rumpun, CPL, ritme mingguan
   - name: dasbor
     description: Dasbor mahasiswa - beban belajar mingguan dan pelacakan capaian pembelajaran (CPL)
+  - name: rapor
+    description: Rapor per semester dan rekap nilai dari penilaian blok/proyek - skala huruf A-E, IP/IPK dari mata kuliah yang sudah dinilai
   - name: forum
     description: Forum asinkron per rumpun per minggu dengan SLA respons dosen 1x24 jam yang hanya berjalan Senin-Rabu WIB
   - name: kepatuhan
@@ -2514,6 +2516,97 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /rapor/prodi/{prodi}/{angkatan}/{semester}:
+    get:
+      tags:
+        - rapor
+      summary: Rekap nilai satu prodi, angkatan, dan semester
+      description: >-
+        Satu baris per mahasiswa di roster prodi+angkatan, kolomnya mata kuliah
+        semester itu (huruf). Mata kuliah yang belum dinilai tidak dianggap E -
+        dihitung di belum_dinilai. IP dari mata kuliah yang sudah dinilai.
+        Didaftarkan sebelum /rapor/{nim}.
+      operationId: rekapRaporSemester
+      parameters:
+        - {name: prodi, in: path, required: true, schema: {type: string}, example: trpl}
+        - {name: angkatan, in: path, required: true, schema: {type: string}, example: "2026"}
+        - {name: semester, in: path, required: true, schema: {type: integer, minimum: 1}, example: 1}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RekapRaporSemester'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Prodi tidak ada di data kurikulum
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Belum ada mata kuliah semester itu, belum ada mahasiswa angkatan itu di roster, atau semester bukan angka
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /rapor/{nim}:
+    get:
+      tags:
+        - rapor
+      summary: Rapor seluruh semester satu mahasiswa
+      description: >-
+        Skala huruf A >=80, B >=70, C >=60, D >=50, E <50 dengan bobot 4/3/2/1/0;
+        batas C sama dengan ambang lulus proyek blok (D tidak lulus). Satu nilai
+        per mata kuliah - kalau ada beberapa (mengulang), dipakai yang
+        tertinggi. SKS dan semester dari koleksi matakuliah; nilai berkode yang
+        tidak terpetakan ditampilkan terpisah dan tidak masuk IP. Rumpun yang
+        diakui lewat RPL disetujui ditampilkan terpisah, tanpa nilai angka.
+        Mahasiswa hanya boleh melihat rapornya sendiri; dosen/admin siapa pun.
+      operationId: raporMahasiswa
+      parameters:
+        - {name: nim, in: path, required: true, schema: {type: string}, example: 2026TRPL001}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rapor'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Mahasiswa melihat rapor orang lain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: NIM tidak ada di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /forum:
     post:
       tags:
@@ -3695,6 +3788,106 @@ components:
             yang dinilai - laporan akreditasi harus tetap bisa menjawab CPL ini
             terbukti dari mana.
           example: [R11]
+    SkalaHuruf:
+      type: object
+      properties:
+        huruf: {type: string, example: C}
+        minimal: {type: number, example: 60}
+        bobot: {type: number, example: 2}
+    NilaiRapor:
+      type: object
+      properties:
+        kode_mk: {type: string, example: LITERASI-DIGITAL}
+        nama: {type: string}
+        sks: {type: integer}
+        rumpun_kode: {type: string}
+        nilai_akhir: {type: number, example: 83.2}
+        huruf: {type: string, example: A}
+        bobot: {type: number, example: 4}
+        lulus: {type: boolean}
+        cpl:
+          type: array
+          items: {type: string}
+    SemesterRapor:
+      type: object
+      properties:
+        semester: {type: integer}
+        mata_kuliah:
+          type: array
+          items: {$ref: '#/components/schemas/NilaiRapor'}
+        sks_dinilai: {type: integer}
+        sks_lulus: {type: integer}
+        ip: {type: number, example: 3.5}
+        cpl_tersentuh:
+          type: array
+          items: {type: string}
+          description: CPL rumpun dari mata kuliah yang lulus
+    Rapor:
+      type: object
+      properties:
+        nim: {type: string}
+        nama: {type: string}
+        prodi_kode: {type: string}
+        angkatan: {type: string}
+        semester_berjalan: {type: integer}
+        semester:
+          type: array
+          items: {$ref: '#/components/schemas/SemesterRapor'}
+        sks_dinilai: {type: integer}
+        sks_lulus: {type: integer}
+        ipk: {type: number}
+        rumpun_diakui_rpl:
+          type: array
+          items: {type: string}
+          description: Tanpa nilai angka; tidak masuk IP/IPK
+        tidak_terpetakan:
+          type: array
+          items:
+            type: object
+            properties:
+              kode_mk: {type: string}
+              nilai_akhir: {type: number}
+              huruf: {type: string}
+        skala:
+          type: array
+          items: {$ref: '#/components/schemas/SkalaHuruf'}
+        catatan:
+          type: array
+          items: {type: string}
+    BarisRekapRapor:
+      type: object
+      properties:
+        nim: {type: string}
+        nama: {type: string}
+        nilai:
+          type: object
+          additionalProperties: {type: string}
+          description: kode_mk -> huruf; mata kuliah yang belum dinilai tidak muncul
+          example: {LITERASI-DIGITAL: A, KEWIRAUSAHAAN: B}
+        belum_dinilai: {type: integer}
+        sks_dinilai: {type: integer}
+        sks_lulus: {type: integer}
+        ip: {type: number}
+    RekapRaporSemester:
+      type: object
+      properties:
+        prodi_kode: {type: string}
+        angkatan: {type: string}
+        semester: {type: integer}
+        mata_kuliah:
+          type: array
+          items:
+            type: object
+            properties:
+              kode: {type: string}
+              nama: {type: string}
+              sks: {type: integer}
+        mahasiswa:
+          type: array
+          items: {$ref: '#/components/schemas/BarisRekapRapor'}
+        skala:
+          type: array
+          items: {$ref: '#/components/schemas/SkalaHuruf'}
     ForumUtas:
       type: object
       properties:
