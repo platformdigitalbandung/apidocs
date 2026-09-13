@@ -1512,6 +1512,62 @@ paths:
       security:
         - dosenToken: []
   /sesiujian:
+    get:
+      tags:
+        - sesiujian
+      summary: Daftar sesi ujian untuk pengawas
+      description: >-
+        Ditambahkan di luar tiga rute rencana modul: ketiga rute lain butuh id
+        sesi, dan pengawas bisa jadi dosen yang berbeda dari yang menjadwalkan
+        sehingga tidak pernah melihat id itu. pengawas=saya diterjemahkan jadi
+        NIP pemegang token. Diurutkan menurut tanggal_jam.
+      operationId: daftarSesiUjian
+      parameters:
+        - in: query
+          name: rumpun
+          schema:
+            type: string
+          required: false
+          example: R3
+        - in: query
+          name: pengawas
+          schema:
+            type: string
+          required: false
+          description: NIP pengawas, atau "saya" untuk NIP pemegang token
+          example: saya
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sesi:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SesiUjian'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: pengawas=saya tetapi NIP pemegang token belum diisi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
     post:
       tags:
         - sesiujian
