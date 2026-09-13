@@ -4140,6 +4140,14 @@ components:
           type: string
           description: NIM pemilik nomor, diisi hanya untuk peran mahasiswa
           example: "2026001"
+        prodi_kode:
+          type: string
+          description: >-
+            Diisi hanya dari roster, untuk mahasiswa yang terdaftar di sana.
+            Mahasiswa yang dikenali lewat jalur mundur penyisiran proyek tidak
+            mendapatkannya, karena prodinya tidak tercatat di sumber yang
+            tepercaya.
+          example: trpl
         proyekblok:
           type: array
           items:
