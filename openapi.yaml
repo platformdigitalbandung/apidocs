@@ -2841,6 +2841,17 @@ components:
             type: string
           description: Diisi untuk CPL yang ditopang di luar penilaian proyek blok
           example: [jalur kontinu, KKN Tematik]
+        rumpun_bukti_rpl:
+          type: array
+          items:
+            type: string
+          description: >-
+            Rumpun yang diakui lewat pengajuan RPL yang DISETUJUI dan menyentuh
+            CPL ini. Sengaja dipisah dari rumpun_bukti (nilai proyek blok) karena
+            RPL adalah tinjauan dokumen pengalaman kerja lampau, bukan artefak
+            yang dinilai - laporan akreditasi harus tetap bisa menjawab CPL ini
+            terbukti dari mana.
+          example: [R11]
     RingkasanCakupanCPL:
       type: object
       properties:
@@ -2870,6 +2881,13 @@ components:
           type: integer
           description: Jumlah CPL yang tidak dipetakan ke rumpun mana pun (mis. CPL01 TRPL)
           example: 1
+        tercapai_hanya_rpl:
+          type: integer
+          description: >-
+            Berapa dari tercapai yang buktinya SEMATA-MATA RPL, tanpa satu pun
+            nilai proyek blok. Angka yang perlu dilihat asesor sebelum membaca
+            tercapai sebagai capaian yang dinilai di kelas.
+          example: 0
         daftar:
           type: array
           items:
