@@ -1659,6 +1659,60 @@ paths:
       security:
         - dosenToken: []
   /rpl:
+    get:
+      tags:
+        - rpl
+      summary: Daftar pengajuan RPL untuk peninjau
+      description: >-
+        Pengajuan lintas mahasiswa, terbaru dulu. Ditambahkan di luar tiga rute
+        rencana modul karena tanpa ini dosen tidak punya cara menemukan
+        pengajuan yang menunggu tinjauan - rute lain hanya per NIM. Saringan
+        status yang tidak dikenal ditolak 422, bukan dianggap "semua", supaya
+        salah ketik tidak mengembalikan seluruh pengajuan seolah berstatus yang
+        diminta.
+      operationId: daftarRPL
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [diajukan, ditinjau, disetujui, ditolak]
+          required: false
+          description: Kosong berarti semua status
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  rpl:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PengajuanRPL'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Saringan status tidak dikenal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
     post:
       tags:
         - rpl
