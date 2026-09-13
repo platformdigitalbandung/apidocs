@@ -39,6 +39,11 @@ tags:
     description: >-
       Asesmen berpengawas - jadwal ujian di kampus beserta pencatatan kehadirannya.
       Bukan proctoring otomatis. Skor ujiannya diinput dosen lewat Modul Blok/Proyek.
+  - name: progresmateri
+    description: >-
+      Pelacakan konsumsi materi asinkron - seberapa jauh mahasiswa menyelesaikan
+      video atau bacaan per minggu rumpun, dikirim berkala oleh player web.
+      persen_selesai yang tersimpan tidak pernah turun. Tanpa perintah WhatsApp.
   - name: rpl
     description: >-
       Rekognisi Pembelajaran Lampau - pengakuan pengalaman kerja SEBELUM masuk kuliah
@@ -1780,6 +1785,112 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /progresmateri:
+    post:
+      tags:
+        - progresmateri
+      summary: Catat progres satu materi asinkron
+      description: >-
+        Dipanggil player video (YouTube Player API) atau pembaca materi
+        (scroll-tracking) secara berkala. NIM tidak dikirim - diambil dari
+        roster lewat nomor WhatsApp pada token. Upsert per (nim, rumpun_kode,
+        minggu, materi_id), dan persen_selesai yang tersimpan TIDAK PERNAH
+        TURUN - memutar mundur untuk menonton ulang tidak boleh menghapus bukti
+        bahwa materinya pernah ditonton sampai jauh. rumpun_kode divalidasi ke
+        prodi mahasiswa.
+      operationId: catatProgresMateri
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatatProgresRequest'
+      responses:
+        '200':
+          description: successful operation — persen_selesai berisi nilai yang tersimpan, bukan yang dikirim
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgresMateri'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Nomor pada token belum terdaftar sebagai mahasiswa di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: >-
+            Validasi gagal - rumpun_kode/materi_id kosong, materi_id lebih dari
+            200 karakter, minggu di luar 1-52, persen_selesai di luar 0-100, atau
+            rumpun tidak ada pada prodi mahasiswa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /mahasiswa/{nim}/progres:
+    get:
+      tags:
+        - progresmateri
+      summary: Progres materi asinkron seorang mahasiswa
+      description: Mahasiswa hanya boleh melihat progresnya sendiri; dosen dan admin bebas.
+      operationId: progresMahasiswa
+      parameters:
+        - name: nim
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "2026TRPL001"
+        - name: minggu
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Kosong atau 0 berarti semua minggu
+          example: 3
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nim:
+                    type: string
+                  minggu:
+                    type: integer
+                  progres:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProgresMateri'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Mahasiswa mencoba melihat progres orang lain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Query minggu bukan angka tidak negatif
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /mahasiswa/{nim}/rpl:
     get:
       tags:
@@ -3407,6 +3518,53 @@ components:
           example: 88
         catatan:
           type: string
+    ProgresMateri:
+      description: Progres satu (nim, rumpun, minggu, materi). persen_selesai yang tersimpan tidak pernah turun.
+      type: object
+      properties:
+        id:
+          type: string
+        nim:
+          type: string
+          readOnly: true
+          description: Diisi server dari roster lewat nomor WhatsApp pada token
+          example: "2026TRPL001"
+        rumpun_kode:
+          type: string
+          example: R1
+        minggu:
+          type: integer
+          example: 3
+        materi_id:
+          type: string
+          description: Slug/ID video atau bacaan, maksimal 200 karakter
+          example: video-pengenalan-git
+        persen_selesai:
+          type: number
+          format: double
+          example: 80
+    CatatProgresRequest:
+      type: object
+      required: [rumpun_kode, minggu, materi_id, persen_selesai]
+      properties:
+        rumpun_kode:
+          type: string
+          example: R1
+        minggu:
+          type: integer
+          minimum: 1
+          maximum: 52
+          example: 3
+        materi_id:
+          type: string
+          maxLength: 200
+          example: video-pengenalan-git
+        persen_selesai:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          example: 45
     ProyekTelat:
       description: Satu proyek yang sudah melewati titik tengah semester tetapi tinjauan tengahnya belum lengkap.
       type: object
