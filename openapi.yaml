@@ -346,6 +346,45 @@ paths:
                     type: array
                     items:
                       type: object
+    post:
+      tags:
+        - kurikulum
+      summary: Tambah atau perbarui program studi (dosen/kaprodi)
+      description: >-
+        Membuat program studi baru bisa dilakukan tanpa ubah kode - sebelumnya
+        satu-satunya sumber data kurikulum adalah seed hardcode di backend.
+        Idempoten per kode. Kode prodi jadi kunci di rumpun, cpl, matakuliah,
+        mahasiswa, dan kalender_semester, jadi bentuknya dikunci - huruf kecil,
+        angka, tanda hubung, 2-20 karakter, diawali huruf, dan sebaiknya tidak
+        diubah lagi setelah ada datanya.
+      operationId: simpanProdi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Prodi'
+      responses:
+        '200':
+          description: tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prodi'
+        '401':
+          description: Bukan dosen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Bentuk data tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /kurikulum/prodi/{prodi}/rumpun:
     get:
       tags:
@@ -371,6 +410,172 @@ paths:
                     type: array
                     items:
                       type: object
+    post:
+      tags:
+        - kurikulum
+      summary: Tambah atau perbarui rumpun mata kuliah (dosen/kaprodi)
+      description: >-
+        prodi_kode diambil dari path, bukan body. Mata kuliah TIDAK punya rute
+        sendiri - koleksi matakuliah diturunkan dari daftar mata_kuliah rumpun
+        ini saat disimpan, aturan yang sama dengan jalur seed, supaya tidak ada
+        dua daftar yang bisa berbeda diam-diam. Idempoten per prodi+kode.
+      operationId: simpanRumpun
+      parameters:
+        - in: path
+          name: prodi
+          schema:
+            type: string
+          required: true
+          description: Kode/slug program studi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Rumpun'
+      responses:
+        '200':
+          description: tersimpan beserta mata kuliah yang diturunkan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rumpun:
+                    $ref: '#/components/schemas/Rumpun'
+                  matakuliah:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MataKuliah'
+        '401':
+          description: Bukan dosen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Prodi belum ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Bentuk data tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /kurikulum/prodi/{prodi}/cpl:
+    post:
+      tags:
+        - kurikulum
+      summary: Tambah atau perbarui capaian pembelajaran (dosen/kaprodi)
+      description: >-
+        prodi_kode diambil dari path. Idempoten per prodi+kode. Selama sebuah
+        prodi belum punya CPL sama sekali, dasbor CPL mahasiswanya menjawab 422
+        dengan sebabnya - bukan 0 tercapai.
+      operationId: simpanCPL
+      parameters:
+        - in: path
+          name: prodi
+          schema:
+            type: string
+          required: true
+          description: Kode/slug program studi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CapaianPembelajaran'
+      responses:
+        '200':
+          description: tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapaianPembelajaran'
+        '401':
+          description: Bukan dosen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Prodi belum ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Bentuk data tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /kurikulum/ritme:
+    get:
+      tags:
+        - kurikulum
+      summary: Ritme mingguan yang tersedia
+      description: >-
+        Ritme boleh lebih dari satu sejak tiap prodi bisa punya pola minggunya
+        sendiri; kalender semester menunjuk ritme yang dipakainya lewat nama.
+        Publik, seperti data kurikulum lain.
+      operationId: daftarRitme
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ritme:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RitmeMingguan'
+    post:
+      tags:
+        - kurikulum
+      summary: Tambah atau perbarui ritme mingguan (dosen/kaprodi)
+      description: >-
+        Idempoten per nama. Hari harus nama hari Bahasa Indonesia dan moda
+        salah satu dari asinkron, daring_sinkron, opsional_luring_daring,
+        bebas. total_menit_per_minggu boleh dikosongkan - dijumlahkan dari
+        sesinya; kalau diisi harus sama persis dengan jumlah itu.
+      operationId: simpanRitme
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RitmeMingguan'
+      responses:
+        '200':
+          description: tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RitmeMingguan'
+        '401':
+          description: Bukan dosen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Bentuk data tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /kurikulum/prodi/{prodi}/matakuliah:
     get:
       tags:
@@ -4838,6 +5043,78 @@ components:
           description: NIP peninjau; admin tanpa NIP tercatat sebagai `wa:<nomor>`
         catatan:
           type: string
+    Prodi:
+      type: object
+      required: [kode, nama, sks_total, semester, jenjang]
+      properties:
+        id: {type: string}
+        kode: {type: string, description: 'Huruf kecil/angka/tanda hubung, 2-20 karakter, diawali huruf. Kunci di rumpun, cpl, matakuliah, mahasiswa, kalender_semester', example: pai}
+        nama: {type: string, example: Pendidikan Agama Islam}
+        sks_total: {type: integer, example: 144}
+        semester: {type: integer, description: Jumlah semester program, example: 8}
+        jenjang: {type: string, example: S1}
+        semester_proyek_kerja_min:
+          type: integer
+          description: >-
+            Semester paling awal mahasiswa prodi ini boleh mengajukan proyek
+            kerja/magang. Kosong/0 berarti bawaan platform (4).
+          example: 5
+    Rumpun:
+      type: object
+      required: [kode, nama, sks, semester, mata_kuliah]
+      properties:
+        id: {type: string}
+        prodi_kode: {type: string, description: Diisi dari path saat menulis}
+        kode: {type: string, example: R1}
+        nama: {type: string, example: Dasar Keilmuan}
+        mata_kuliah:
+          type: array
+          description: Sumber tunggal koleksi matakuliah - diturunkan dari daftar ini
+          items: {type: string}
+        sks: {type: integer, example: 12}
+        proyek_pengikat: {type: string}
+        moda: {type: string, enum: [ritme_mingguan, tempat_kerja], default: ritme_mingguan}
+        semester: {type: integer, example: 1}
+        cpl:
+          type: array
+          items: {type: string}
+        catatan: {type: string}
+    CapaianPembelajaran:
+      type: object
+      required: [kode, domain]
+      properties:
+        id: {type: string}
+        prodi_kode: {type: string, description: Diisi dari path saat menulis}
+        kode: {type: string, example: CPL01}
+        domain: {type: string, example: sikap}
+        rumpun_penyentuh:
+          type: array
+          items: {type: string}
+        penguatan_usulan:
+          type: array
+          items: {type: string}
+    SesiHari:
+      type: object
+      required: [hari, moda]
+      properties:
+        hari: {type: string, description: Nama hari Bahasa Indonesia, example: Senin}
+        moda: {type: string, enum: [asinkron, daring_sinkron, opsional_luring_daring, bebas]}
+        jam_mulai: {type: string, example: '08.00'}
+        jam_selesai: {type: string, example: '10.00'}
+        menit_instruksional: {type: integer, example: 120}
+        catatan: {type: string}
+    RitmeMingguan:
+      type: object
+      required: [nama, sesi]
+      properties:
+        id: {type: string}
+        nama: {type: string, description: Kalender semester menunjuk ritme lewat nama ini, example: 'Fase 1 - Semester 1-6'}
+        sesi:
+          type: array
+          items:
+            $ref: '#/components/schemas/SesiHari'
+        total_menit_per_minggu: {type: integer, description: Boleh dikosongkan - dijumlahkan dari sesinya}
+        kapasitas_sks_per_semester: {type: number}
     MataKuliah:
       description: >-
         Satu mata kuliah kurikulum, milik satu rumpun. Diturunkan dari
