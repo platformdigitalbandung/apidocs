@@ -76,6 +76,8 @@ tags:
     description: Data referensi kurikulum - prodi, rumpun, CPL, ritme mingguan
   - name: dasbor
     description: Dasbor mahasiswa - beban belajar mingguan dan pelacakan capaian pembelajaran (CPL)
+  - name: autograder
+    description: Hasil autograder kode dari GitHub Actions - webhook workflow_run bertanda tangan HMAC, artefak diambil backend sendiri
   - name: rekaman
     description: Rekaman sesi daring sinkron (YouTube) dengan tenggat tengah malam setelah sesi dan rekap keterlambatan untuk kaprodi
   - name: rapor
@@ -2518,6 +2520,116 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /autograder/webhook:
+    post:
+      tags:
+        - autograder
+      summary: Penerima webhook GitHub workflow_run (autograder)
+      description: >-
+        Dipanggil GitHub, bukan pengguna - tanpa token WhatsAuth. Autentikasinya
+        tanda tangan HMAC SHA-256 atas body mentah (X-Hub-Signature-256) dengan
+        GHWEBHOOKSECRET. Hanya run yang selesai, berpemicu pull_request_target,
+        dari berkas .github/workflows/autograder.yml, di repo milik organisasi
+        platformdigitalbandung yang dicatat; selebihnya dijawab 202. Payload
+        tidak membawa angka - backend mengambil artefak hasil-autograder sendiri
+        lewat GitHub API memakai GHPAT, memetakan username GitHub ke NIM lewat
+        roster, lalu menyimpan idempoten per workflow_run_id.
+      operationId: webhookAutograder
+      security: []
+      parameters:
+        - {name: X-Hub-Signature-256, in: header, required: true, schema: {type: string}, example: "sha256=5c..."}
+        - {name: X-GitHub-Event, in: header, required: true, schema: {type: string, enum: [workflow_run, ping]}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookWorkflowRun'
+      responses:
+        '200':
+          description: tercatat (atau pong untuk event ping)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+                  workflow_run_id: {type: integer, format: int64}
+                  nim: {type: string}
+                  terpetakan: {type: boolean, description: false kalau username GitHub belum ada di roster}
+                  tes_dosen_lulus: {type: integer}
+                  tes_dosen_total: {type: integer}
+        '202':
+          description: Tanda tangan sah, tetapi bukan run autograder yang dicatat (event, aksi, pemicu, berkas, atau organisasi lain)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  diabaikan: {type: string}
+        '401':
+          description: Tanda tangan webhook tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Payload bukan JSON yang sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '502':
+          description: Artefak tidak bisa diambil dari GitHub (hak GHPAT, artefak kedaluwarsa, atau tidak ada) - bisa dikirim ulang dari riwayat webhook GitHub
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '503':
+          description: GHWEBHOOKSECRET belum dikonfigurasi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+  /autograder:
+    get:
+      tags:
+        - autograder
+      summary: Hasil autograder (angka mentah)
+      description: >-
+        Terbaru dulu, maksimal 200. Dosen/admin melihat siapa pun; mahasiswa
+        hanya miliknya (NIM dari roster, query nim diabaikan). Angka mentah -
+        pembagian bobot tes dan coverage di dalam 15% autograder diatur di LMS.
+      operationId: daftarAutograder
+      parameters:
+        - {name: nim, in: query, required: false, schema: {type: string}}
+        - {name: repo, in: query, required: false, schema: {type: string}, example: platformdigitalbandung/autograder-contoh}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hasil:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HasilAutograder'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen, admin, atau mahasiswa di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /rekaman:
     post:
       tags:
@@ -3950,6 +4062,56 @@ components:
             yang dinilai - laporan akreditasi harus tetap bisa menjawab CPL ini
             terbukti dari mana.
           example: [R11]
+    HasilAutograder:
+      type: object
+      properties:
+        id: {type: string}
+        workflow_run_id: {type: integer, format: int64, description: Unik - webhook yang dikirim ulang tidak menggandakan dokumen}
+        nim: {type: string, description: Kosong kalau username GitHub belum ada di roster}
+        github_username: {type: string}
+        repo: {type: string}
+        pr_nomor: {type: integer}
+        commit_sha: {type: string}
+        kesimpulan: {type: string, description: conclusion workflow run}
+        versi_binari: {type: string, example: v0.2.0}
+        go_versi: {type: string}
+        tes_dosen_lulus: {type: integer, description: Ukuran kebenaran - hanya tes dari folder tes dosen}
+        tes_dosen_total: {type: integer}
+        tes_dosen_gagal:
+          type: array
+          items: {type: string}
+        tes_semua_lulus: {type: integer, description: Termasuk tes buatan mahasiswa}
+        tes_semua_total: {type: integer}
+        build_gagal: {type: boolean}
+        persen_baris: {type: number, description: Coverage pernyataan Go dari semua tes - bukan ukuran kebenaran}
+        terisolasi: {type: boolean, description: go test dijalankan di kontainer Docker}
+        mulai: {type: string, format: date-time}
+        selesai: {type: string, format: date-time}
+        diterima: {type: string, format: date-time}
+    WebhookWorkflowRun:
+      type: object
+      description: Bagian payload webhook GitHub workflow_run yang dibaca backend
+      properties:
+        action: {type: string, example: completed}
+        workflow_run:
+          type: object
+          properties:
+            id: {type: integer, format: int64}
+            path: {type: string, example: .github/workflows/autograder.yml}
+            event: {type: string, example: pull_request_target}
+            conclusion: {type: string}
+            actor:
+              type: object
+              properties:
+                login: {type: string}
+        repository:
+          type: object
+          properties:
+            full_name: {type: string}
+            owner:
+              type: object
+              properties:
+                login: {type: string, example: platformdigitalbandung}
     RekamanSesi:
       type: object
       properties:
@@ -4645,6 +4807,10 @@ components:
       description: Satu baris roster akademik. Bukan akun - autentikasi tetap WhatsAuth, dan phonenumber di sini yang menghubungkan token ke identitas akademik.
       type: object
       properties:
+        github_username:
+          type: string
+          description: Opsional, huruf kecil, unik antar-NIM - jembatan hasil autograder ke NIM
+          example: marfanwicaksono
         id:
           type: string
         nim:
