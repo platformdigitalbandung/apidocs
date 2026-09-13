@@ -838,6 +838,62 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /proyekkerja/dasbor:
+    get:
+      tags:
+        - proyekkerja
+      summary: Dasbor kaprodi proyek kerja
+      description: >-
+        Berapa proyek kerja yang aktif dan mana yang telat tinjauan
+        tengah-semester. Tenggatnya diambil dari kalender semester yang sudah
+        TERBIT - titik tengah = sesi minggu ke-ceil(n/2) - bukan dari konstanta
+        hari. Kalau kalender terbitnya belum ada, proyek aktif dihitung di
+        `tanpa_acuan` dan TIDAK ditebak telat; bendera telat yang dikarang dari
+        angka hari tidak bisa dipertanggungjawabkan ke siapa pun. Query
+        `angkatan` hanya memilih kalender acuan, BUKAN menyaring proyek, karena
+        dokumen proyekkerja tidak menyimpan angkatan.
+      operationId: dasborProyekKerja
+      parameters:
+        - in: query
+          name: prodi
+          schema:
+            type: string
+          required: false
+          example: trpl
+        - in: query
+          name: angkatan
+          schema:
+            type: string
+          required: false
+          description: Hanya menentukan kalender acuan titik tengah
+          example: "2026"
+        - in: query
+          name: semester
+          schema:
+            type: integer
+          required: false
+          example: 5
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RingkasanKaprodi'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /proyekkerja:
     post:
       tags:
@@ -3333,6 +3389,68 @@ components:
           example: 88
         catatan:
           type: string
+    ProyekTelat:
+      description: Satu proyek yang sudah melewati titik tengah semester tetapi tinjauan tengahnya belum lengkap.
+      type: object
+      properties:
+        id:
+          type: string
+        nim:
+          type: string
+        judul_pekerjaan:
+          type: string
+        nama_perusahaan:
+          type: string
+        rumpun_kode:
+          type: string
+        status:
+          type: string
+        dosen_nip:
+          type: string
+        kurang:
+          type: array
+          items:
+            type: string
+            enum: [dosen, atasan]
+          description: Pihak yang tinjauan tengahnya belum masuk - itu yang menentukan siapa yang harus ditagih
+          example: [atasan]
+        hari_terlambat:
+          type: integer
+          example: 10
+    RingkasanKaprodi:
+      description: Ringkasan proyek kerja untuk kaprodi.
+      type: object
+      properties:
+        prodi_kode:
+          type: string
+        angkatan:
+          type: string
+        semester:
+          type: integer
+        total:
+          type: integer
+        aktif:
+          type: integer
+          description: Sudah disetujui dan belum selesai/ditolak
+        per_status:
+          type: object
+          additionalProperties:
+            type: integer
+          example: {diajukan: 2, berjalan: 5, selesai: 1}
+        acuan_tengah:
+          type: string
+          enum: [kalender, tidak-ada-kalender]
+        titik_tengah:
+          type: string
+          description: Tanggal titik tengah semester; kosong kalau tidak ada kalender terbit
+          example: "2026-10-26"
+        tanpa_acuan:
+          type: integer
+          description: Proyek aktif yang keterlambatannya tidak bisa dinilai karena kalender semesternya belum terbit
+        telat:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProyekTelat'
     ProyekKerjaSaya:
       description: Proyek kerja milik pemegang token - yang dibimbing (dosen) atau yang diajukan sendiri (mahasiswa).
       type: object
