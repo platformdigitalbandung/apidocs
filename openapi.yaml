@@ -76,6 +76,8 @@ tags:
     description: Data referensi kurikulum - prodi, rumpun, CPL, ritme mingguan
   - name: dasbor
     description: Dasbor mahasiswa - beban belajar mingguan dan pelacakan capaian pembelajaran (CPL)
+  - name: kepatuhan
+    description: Laporan kepatuhan per mata kuliah untuk akreditasi - menit asinkron, daring sinkron, dan opsional luring/daring terhadap tuntutan SKS, beserta bukti penilaian dan CPL
   - name: proyekblok
     description: Modul Blok/Proyek - instance proyek per rumpun kurikulum dan penilaian per mahasiswa per mata kuliah
 paths:
@@ -2369,6 +2371,147 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
+  /kepatuhan/prodi/{prodi}/{angkatan}/{semester}:
+    get:
+      tags:
+        - kepatuhan
+      summary: Laporan kepatuhan satu kalender semester
+      description: >-
+        Laporan untuk akreditasi dari kalender semester yang SUDAH TERBIT: menit
+        per moda per minggu dan per mata kuliah terhadap target SKS x 85 menit
+        terjadwal-terbukti per minggu (170 menit SN-Dikti dicantumkan sebagai
+        total yang separuhnya belajar mandiri). Menit tiap sesi diambil dari
+        ritme mingguan - sumber yang sama dengan dasbor beban belajar - bukan
+        dari jam kotor kalender.
+
+
+        Menit per mata kuliah adalah ALOKASI: sesi kalender tidak menunjuk mata
+        kuliah, jadi menit tiap sesi dibagi ke mata kuliah semester itu
+        sebanding SKS (sesi yang menyebut rumpun_kode hanya ke mata kuliah
+        rumpun itu). Metode ini disebut di `catatan`. Ekspornya JSON + halaman
+        web siap cetak (kepatuhan.html), tanpa berkas.
+      operationId: laporanKepatuhanSemester
+      parameters:
+        - name: prodi
+          in: path
+          required: true
+          schema:
+            type: string
+          example: trpl
+        - name: angkatan
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "2026"
+        - name: semester
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          example: 1
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaporanKepatuhan'
+        '401':
+          description: >-
+            Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: >-
+            Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: >-
+            Prodi tidak ada di data kurikulum
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: >-
+            Datanya belum lengkap - belum ada kalender terbit untuk kombinasi itu,
+            belum ada mata kuliah semester itu, ritme mingguan belum di-seed, atau
+            semester bukan angka. Sengaja bukan 200 dengan laporan kosong: "0 menit"
+            di borang terbaca seperti fakta.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /kepatuhan/matakuliah/{prodi}/{kode}:
+    get:
+      tags:
+        - kepatuhan
+      summary: Rekap kepatuhan satu mata kuliah lintas angkatan
+      description: >-
+        Baris laporan kepatuhan satu mata kuliah pada setiap angkatan yang
+        kalender semesternya (semester mata kuliah itu) sudah terbit. Perhitungan
+        tiap baris sama persis dengan laporan semester.
+      operationId: rekapKepatuhanMataKuliah
+      parameters:
+        - name: prodi
+          in: path
+          required: true
+          schema:
+            type: string
+          example: trpl
+        - name: kode
+          in: path
+          required: true
+          description: Kode mata kuliah (koleksi matakuliah), tidak peka huruf besar
+          schema:
+            type: string
+          example: LITERASI-DIGITAL
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RekapKepatuhanMataKuliah'
+        '401':
+          description: >-
+            Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: >-
+            Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: >-
+            Prodi atau mata kuliah tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: >-
+            Belum ada kalender terbit untuk semester mata kuliah itu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /proyekblok:
     get:
       tags:
@@ -3295,6 +3438,136 @@ components:
             yang dinilai - laporan akreditasi harus tetap bisa menjawab CPL ini
             terbukti dari mana.
           example: [R11]
+    MenitModa:
+      type: object
+      description: Menit instruksional menurut moda sesi kalender. Moda yang tidak dikenal dihitung di `lain` supaya `total` utuh.
+      properties:
+        asinkron:
+          type: integer
+        daring_sinkron:
+          type: integer
+        opsional_luring_daring:
+          type: integer
+        lain:
+          type: integer
+        total:
+          type: integer
+    KepatuhanMinggu:
+      type: object
+      properties:
+        minggu:
+          type: integer
+        tanggal_mulai:
+          type: string
+          example: "2026-09-07"
+        menit:
+          $ref: '#/components/schemas/MenitModa'
+    KepatuhanMataKuliah:
+      type: object
+      properties:
+        kode:
+          type: string
+          example: LITERASI-DIGITAL
+        nama:
+          type: string
+        sks:
+          type: integer
+        rumpun_kode:
+          type: string
+        menit:
+          allOf:
+            - $ref: '#/components/schemas/MenitModa'
+          description: Total semester hasil ALOKASI sebanding SKS, bukan catatan per mata kuliah
+        minggu_aktif:
+          type: integer
+        menit_per_minggu:
+          type: number
+        target_menit_per_minggu:
+          type: integer
+          description: SKS x 85 menit terjadwal-terbukti
+        persen_target:
+          type: number
+        memenuhi:
+          type: boolean
+        cpl:
+          type: array
+          items:
+            type: string
+          description: Dari rumpun mata kuliah ini; kosong kalau prodi belum punya CPL terdaftar
+        jumlah_dinilai:
+          type: integer
+          description: Mahasiswa berbeda yang punya nilai mata kuliah ini di proyek blok angkatan tersebut
+        jumlah_lulus:
+          type: integer
+    LaporanKepatuhan:
+      type: object
+      properties:
+        prodi_kode:
+          type: string
+        angkatan:
+          type: string
+        semester:
+          type: integer
+        kalender_id:
+          type: string
+        jumlah_minggu:
+          type: integer
+        menit_per_sks_sndikti:
+          type: integer
+          example: 170
+        menit_per_sks_terjadwal:
+          type: integer
+          example: 85
+        total_sks:
+          type: integer
+        kapasitas_sks:
+          type: number
+          example: 16.9
+        menit:
+          $ref: '#/components/schemas/MenitModa'
+        per_minggu:
+          type: array
+          items:
+            $ref: '#/components/schemas/KepatuhanMinggu'
+        mata_kuliah:
+          type: array
+          items:
+            $ref: '#/components/schemas/KepatuhanMataKuliah'
+        jumlah_memenuhi:
+          type: integer
+        cpl_terdaftar:
+          type: boolean
+          description: false kalau prodi belum punya satu pun CPL (mis. Bisnis Digital)
+        catatan:
+          type: array
+          items:
+            type: string
+    RekapKepatuhanMataKuliah:
+      type: object
+      properties:
+        prodi_kode:
+          type: string
+        kode:
+          type: string
+        nama:
+          type: string
+        sks:
+          type: integer
+        semester:
+          type: integer
+        per_angkatan:
+          type: array
+          items:
+            type: object
+            properties:
+              angkatan:
+                type: string
+              kalender_id:
+                type: string
+              jumlah_minggu:
+                type: integer
+              baris:
+                $ref: '#/components/schemas/KepatuhanMataKuliah'
     RingkasanCakupanCPL:
       type: object
       properties:
