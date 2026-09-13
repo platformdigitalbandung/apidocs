@@ -39,6 +39,11 @@ tags:
     description: >-
       Asesmen berpengawas - jadwal ujian di kampus beserta pencatatan kehadirannya.
       Bukan proctoring otomatis. Skor ujiannya diinput dosen lewat Modul Blok/Proyek.
+  - name: materi
+    description: >-
+      Katalog materi asinkron (video YouTube atau bacaan) per minggu rumpun.
+      Progres materi wajib menunjuk materi di katalog ini. Bacaan disimpan
+      sebagai teks, bukan tautan luar, supaya gulirnya bisa dilacak.
   - name: progresmateri
     description: >-
       Pelacakan konsumsi materi asinkron - seberapa jauh mahasiswa menyelesaikan
@@ -1895,6 +1900,219 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /materi:
+    get:
+      tags:
+        - materi
+      summary: Daftar katalog materi
+      description: >-
+        Diurutkan minggu, urutan, lalu judul. Butuh token WhatsAuth apa pun -
+        video unlisted tidak boleh terbuka untuk publik.
+      operationId: daftarMateri
+      parameters:
+        - in: query
+          name: prodi
+          schema:
+            type: string
+          required: false
+          example: trpl
+        - in: query
+          name: rumpun
+          schema:
+            type: string
+          required: false
+          example: R1
+        - in: query
+          name: minggu
+          schema:
+            type: integer
+          required: false
+          description: Kosong atau 0 berarti semua minggu
+          example: 3
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  materi:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Materi'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Query minggu bukan angka tidak negatif
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+    post:
+      tags:
+        - materi
+      summary: Tambah materi ke katalog
+      description: >-
+        youtube_id boleh diisi ID 11 karakter atau tautan YouTube apa pun
+        (watch, youtu.be, embed, shorts, live) - server mengurainya. Bacaan
+        wajib punya isi teks. Field milik jenis lain dikosongkan server.
+      operationId: buatMateri
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MateriRequest'
+      responses:
+        '201':
+          description: Materi tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Materi'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: >-
+            Validasi gagal - field wajib kosong, minggu di luar 1-52, jenis tak
+            dikenal, youtube_id bukan video YouTube yang sah, isi bacaan kosong,
+            atau rumpun tidak ada pada prodi itu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /materi/{id}:
+    put:
+      tags:
+        - materi
+      summary: Perbarui satu materi
+      description: Mengganti seluruh isi materi; pembuat aslinya dipertahankan.
+      operationId: perbaruiMateri
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MateriRequest'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Materi'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Materi tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+    delete:
+      tags:
+        - materi
+      summary: Hapus satu materi
+      description: >-
+        Tidak berantai: catatan progres yang menunjuk materi ini TIDAK ikut
+        terhapus - itu bukti mahasiswa pernah belajar - tapi kehilangan judul
+        materinya. Karena itu materi yang sudah punya progres ditolak 422
+        sampai diulang dengan konfirmasi=hapus.
+      operationId: hapusMateri
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: konfirmasi
+          schema:
+            type: string
+            enum: [hapus]
+          required: false
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  dihapus:
+                    type: string
+                  progres_tertinggal:
+                    type: integer
+                    description: Jumlah catatan progres yang kini kehilangan judul materinya
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Materi tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Materi sudah punya progres dan konfirmasi=hapus belum diberikan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /progresmateri:
     post:
       tags:
@@ -1906,8 +2124,11 @@ paths:
         roster lewat nomor WhatsApp pada token. Upsert per (nim, rumpun_kode,
         minggu, materi_id), dan persen_selesai yang tersimpan TIDAK PERNAH
         TURUN - memutar mundur untuk menonton ulang tidak boleh menghapus bukti
-        bahwa materinya pernah ditonton sampai jauh. rumpun_kode divalidasi ke
-        prodi mahasiswa.
+        bahwa materinya pernah ditonton sampai jauh. Sejak katalog materi ada
+        (2026-09-13), materi_id WAJIB berupa id materi di katalog, dan materi
+        itu harus milik prodi mahasiswa serta rumpun_kode dan minggu yang
+        dilaporkan - tanpa itu progres bisa dilaporkan atas materi pilihan
+        sendiri.
       operationId: catatProgresMateri
       requestBody:
         content:
@@ -1936,8 +2157,9 @@ paths:
         '422':
           description: >-
             Validasi gagal - rumpun_kode/materi_id kosong, materi_id lebih dari
-            200 karakter, minggu di luar 1-52, persen_selesai di luar 0-100, atau
-            rumpun tidak ada pada prodi mahasiswa
+            200 karakter, minggu di luar 1-52, persen_selesai di luar 0-100,
+            materi_id tidak menunjuk materi di katalog, atau materinya milik
+            prodi/rumpun/minggu lain
           content:
             application/json:
               schema:
@@ -3628,6 +3850,78 @@ components:
           example: 88
         catatan:
           type: string
+    Materi:
+      description: Satu butir katalog materi asinkron untuk satu minggu rumpun.
+      type: object
+      properties:
+        id:
+          type: string
+        prodi_kode:
+          type: string
+          example: trpl
+        rumpun_kode:
+          type: string
+          example: R1
+        minggu:
+          type: integer
+          example: 3
+        urutan:
+          type: integer
+          example: 1
+        judul:
+          type: string
+          example: Pengenalan Git
+        jenis:
+          type: string
+          enum: [video, bacaan]
+        youtube_id:
+          type: string
+          description: Hanya untuk jenis video - ID 11 karakter yang sudah diurai server
+          example: dQw4w9WgXcQ
+        isi:
+          type: string
+          description: Hanya untuk jenis bacaan - teks lengkapnya
+        deskripsi:
+          type: string
+        dibuat_oleh:
+          type: string
+          description: NIP pembuat, atau "wa:<nomor>" kalau NIP-nya kosong
+    MateriRequest:
+      type: object
+      required: [prodi_kode, rumpun_kode, minggu, judul, jenis]
+      properties:
+        prodi_kode:
+          type: string
+          example: trpl
+        rumpun_kode:
+          type: string
+          example: R1
+        minggu:
+          type: integer
+          minimum: 1
+          maximum: 52
+          example: 3
+        urutan:
+          type: integer
+          minimum: 0
+          example: 1
+        judul:
+          type: string
+          maxLength: 200
+        jenis:
+          type: string
+          enum: [video, bacaan]
+        youtube_id:
+          type: string
+          description: Wajib untuk video - ID 11 karakter atau tautan YouTube apa pun
+          example: https://youtu.be/dQw4w9WgXcQ
+        isi:
+          type: string
+          maxLength: 100000
+          description: Wajib untuk bacaan
+        deskripsi:
+          type: string
+          maxLength: 1000
     ProgresMateri:
       description: Progres satu (nim, rumpun, minggu, materi). persen_selesai yang tersimpan tidak pernah turun.
       type: object
