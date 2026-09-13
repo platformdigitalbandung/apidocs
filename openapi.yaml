@@ -2598,8 +2598,11 @@ paths:
       summary: Hasil autograder (angka mentah)
       description: >-
         Terbaru dulu, maksimal 200. Dosen/admin melihat siapa pun; mahasiswa
-        hanya miliknya (NIM dari roster, query nim diabaikan). Angka mentah -
-        pembagian bobot tes dan coverage di dalam 15% autograder diatur di LMS.
+        hanya miliknya (NIM dari roster, query nim diabaikan). Yang DISIMPAN
+        tetap angka mentah; `skor` dihitung saat dibaca dari bobot yang sedang
+        berlaku (lihat /autograder/bobot) dan ikut berubah kalau bobotnya
+        diubah, jadi jangan disimpan di sisi klien. Bobot yang dipakai ikut
+        dikirim supaya angkanya bisa diterangkan.
       operationId: daftarAutograder
       parameters:
         - {name: nim, in: query, required: false, schema: {type: string}}
@@ -2615,7 +2618,9 @@ paths:
                   hasil:
                     type: array
                     items:
-                      $ref: '#/components/schemas/HasilAutograder'
+                      $ref: '#/components/schemas/HasilAutograderBerskor'
+                  bobot:
+                    $ref: '#/components/schemas/BobotAutograder'
         '401':
           description: Token WhatsAuth tidak sah
           content:
@@ -2624,6 +2629,75 @@ paths:
                 $ref: '#/components/schemas/DetailError'
         '403':
           description: Bukan dosen, admin, atau mahasiswa di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /autograder/bobot:
+    get:
+      tags:
+        - autograder
+      summary: Pembagian bobot di dalam komponen autograder
+      description: >-
+        Boleh dibaca siapa pun yang login - mahasiswa berhak tahu dari mana
+        angkanya datang. Belum pernah diatur menjawab nilai bawaan
+        (tes_dosen 0.7, coverage 0.3), bukan 404.
+      operationId: bobotAutograder
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BobotAutograder'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+    put:
+      tags:
+        - autograder
+      summary: Dosen/admin mengatur pembagian bobot autograder
+      description: >-
+        Yang diatur di sini adalah pembagian DI DALAM komponen autograder -
+        berapa bagian dari angkanya yang datang dari tes dosen dan berapa dari
+        coverage. Besar komponennya terhadap nilai rumpun sudah ditetapkan
+        kurikulum (15%) dan tidak bisa diubah lewat rute ini. tes_dosen +
+        coverage harus tepat 1. Satu pengaturan untuk seluruh platform.
+      operationId: simpanBobotAutograder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BobotAutograderRequest'
+      responses:
+        '200':
+          description: tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BobotAutograder'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Bobot di luar 0..1 atau jumlahnya bukan 1
           content:
             application/json:
               schema:
@@ -4088,6 +4162,36 @@ components:
         mulai: {type: string, format: date-time}
         selesai: {type: string, format: date-time}
         diterima: {type: string, format: date-time}
+    HasilAutograderBerskor:
+      allOf:
+        - $ref: '#/components/schemas/HasilAutograder'
+        - type: object
+          properties:
+            skor:
+              type: number
+              description: >-
+                0-100, dihitung saat dibaca dari bobot yang berlaku - TIDAK
+                disimpan. Build gagal selalu 0. Kalau soal tidak punya tes
+                dosen sama sekali, porsi tes dialihkan ke coverage.
+              example: 59
+    BobotAutograder:
+      type: object
+      description: >-
+        Pembagian bobot di dalam komponen autograder, satu pengaturan untuk
+        seluruh platform. Bukan besar komponennya terhadap nilai rumpun - itu
+        15% menurut kurikulum dan tidak diatur di sini.
+      properties:
+        id: {type: string}
+        tes_dosen: {type: number, description: Porsi dari rasio tes dosen yang lulus, 0..1, example: 0.7}
+        coverage: {type: number, description: Porsi dari persen baris ter-cover, 0..1, example: 0.3}
+        diperbarui: {type: string, format: date-time}
+        diubah_oleh: {type: string, description: NIP dosen yang terakhir mengubah - snapshot pelaku}
+    BobotAutograderRequest:
+      type: object
+      required: [tes_dosen, coverage]
+      properties:
+        tes_dosen: {type: number, example: 0.7}
+        coverage: {type: number, example: 0.3}
     WebhookWorkflowRun:
       type: object
       description: Bagian payload webhook GitHub workflow_run yang dibaca backend
