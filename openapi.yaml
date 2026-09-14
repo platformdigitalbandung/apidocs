@@ -128,8 +128,23 @@ paths:
       tags:
         - tugas
       summary: Daftar tugas
+      description: Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster).
       operationId: daftarTugas
+      security:
+        - dosenToken: []
       responses:
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor pada token belum terdaftar sebagai dosen, admin, atau mahasiswa di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '200':
           description: successful operation
           content:
@@ -185,7 +200,10 @@ paths:
       tags:
         - tugas
       summary: Detail tugas
+      description: Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster).
       operationId: detailTugas
+      security:
+        - dosenToken: []
       parameters:
         - in: path
           name: id
@@ -194,6 +212,18 @@ paths:
           required: true
           description: ObjectID tugas
       responses:
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor pada token belum terdaftar sebagai dosen, admin, atau mahasiswa di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '200':
           description: successful operation
           content:
@@ -218,8 +248,10 @@ paths:
       tags:
         - tugas
       summary: Kumpulkan berkas tugas
-      description: Endpoint publik untuk mahasiswa mengumpulkan tugas. Body berupa multipart/form-data berisi nama, nim, dan berkas.
+      description: Hanya mahasiswa di roster. Nama dan NIM kiriman diambil dari roster lewat nomor WhatsApp di token, bukan dari isian form. Body berupa multipart/form-data berisi berkas.
       operationId: kirimTugas
+      security:
+        - dosenToken: []
       parameters:
         - in: path
           name: id
@@ -233,20 +265,24 @@ paths:
             schema:
               type: object
               properties:
-                nama:
-                  type: string
-                  example: Budi Santoso
-                nim:
-                  type: string
-                  example: "1301210001"
                 berkas:
                   type: string
                   format: binary
               required:
-                - nama
-                - nim
                 - berkas
       responses:
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Pemegang token bukan mahasiswa di roster (termasuk dosen/admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '200':
           description: successful operation
           content:
@@ -265,7 +301,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
-          description: Nama/NIM/berkas tidak valid atau gagal diekstrak
+          description: Berkas tidak ada atau gagal diekstrak
           content:
             application/json:
               schema:
@@ -338,8 +374,23 @@ paths:
       tags:
         - kurikulum
       summary: Daftar program studi
+      description: Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster).
       operationId: daftarProdi
+      security:
+        - dosenToken: []
       responses:
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor pada token belum terdaftar sebagai dosen, admin, atau mahasiswa di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '200':
           description: successful operation
           content:
@@ -440,7 +491,10 @@ paths:
       tags:
         - kurikulum
       summary: Daftar rumpun matakuliah suatu prodi
+      description: Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster).
       operationId: daftarRumpun
+      security:
+        - dosenToken: []
       parameters:
         - in: path
           name: prodi
@@ -449,6 +503,18 @@ paths:
           required: true
           description: Kode/slug program studi
       responses:
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor pada token belum terdaftar sebagai dosen, admin, atau mahasiswa di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '200':
           description: successful operation
           content:
@@ -575,9 +641,23 @@ paths:
       description: >-
         Ritme boleh lebih dari satu sejak tiap prodi bisa punya pola minggunya
         sendiri; kalender semester menunjuk ritme yang dipakainya lewat nama.
-        Publik, seperti data kurikulum lain.
+        Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster).
       operationId: daftarRitme
+      security:
+        - dosenToken: []
       responses:
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor pada token belum terdaftar sebagai dosen, admin, atau mahasiswa di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '200':
           description: successful operation
           content:
@@ -635,9 +715,11 @@ paths:
         Mata kuliah dengan kode stabil dan SKS berupa angka, diturunkan dari
         `rumpun.mata_kuliah` saat seed kurikulum. Berbeda dari daftar rumpun yang
         memuat mata kuliah sebagai teks tampilan (`"Literasi Digital (3)"`) - SKS
-        di sini tidak perlu diurai dari dalam tanda kurung. Publik, seperti rute
-        kurikulum lainnya.
+        di sini tidak perlu diurai dari dalam tanda kurung. Hanya pengguna
+        terdaftar (dosen/admin atau mahasiswa di roster).
       operationId: daftarMataKuliah
+      security:
+        - dosenToken: []
       parameters:
         - in: path
           name: prodi
@@ -652,6 +734,18 @@ paths:
           required: false
           description: Saring per kode rumpun; kosong berarti seluruh prodi
       responses:
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor pada token belum terdaftar sebagai dosen, admin, atau mahasiswa di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '200':
           description: successful operation
           content:
@@ -706,8 +800,10 @@ paths:
       tags:
         - kalender
       summary: Daftar kalender akademik
-      description: Mengembalikan kalender yang sudah diterbitkan - tidak perlu token. Filter prodi, angkatan, dan semester opsional. Dosen yang menyertakan token WhatsAuth dan draft=1 ikut menerima kalender yang masih draft.
+      description: Mengembalikan kalender yang sudah diterbitkan, hanya untuk pengguna terdaftar (dosen/admin atau mahasiswa di roster). Filter prodi, angkatan, dan semester opsional. Dosen yang menyertakan token WhatsAuth dan draft=1 ikut menerima kalender yang masih draft.
       operationId: daftarKalender
+      security:
+        - dosenToken: []
       parameters:
         - in: query
           name: prodi
@@ -735,6 +831,18 @@ paths:
           required: false
           description: Sertakan kalender draft - wajib token dosen
       responses:
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor pada token belum terdaftar sebagai dosen, admin, atau mahasiswa di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '200':
           description: successful operation
           content:
@@ -2758,9 +2866,12 @@ paths:
       description: >-
         Versi hidup dari matriks CPL yang selama ini ditulis manual di dokumen
         kurikulum: sebuah CPL tercapai kalau ADA mahasiswa mana pun di prodi itu
-        yang sudah lulus di rumpun yang menyentuhnya. Tanpa token - isinya
-        agregat tanpa data pribadi, memang untuk halaman akreditasi/landing.
+        yang sudah lulus di rumpun yang menyentuhnya. Isinya agregat tanpa data
+        pribadi, tetapi tetap hanya untuk pengguna terdaftar (dosen/admin atau
+        mahasiswa di roster).
       operationId: cakupanCPLProdi
+      security:
+        - dosenToken: []
       parameters:
         - name: kode
           in: path
@@ -2769,6 +2880,18 @@ paths:
             type: string
           example: trpl
       responses:
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor pada token belum terdaftar sebagai dosen, admin, atau mahasiswa di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '200':
           description: successful operation
           content:
