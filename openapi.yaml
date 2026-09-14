@@ -405,15 +405,16 @@ paths:
     post:
       tags:
         - kurikulum
-      summary: Tambah atau perbarui program studi (kaprodi prodi itu atau admin; prodi baru hanya admin)
+      summary: Tambah atau perbarui program studi (kaprodi prodi itu; prodi baru hanya admin)
       description: >-
         Membuat program studi baru bisa dilakukan tanpa ubah kode - sebelumnya
         satu-satunya sumber data kurikulum adalah seed hardcode di backend.
         Idempoten per kode. Kode prodi jadi kunci di rumpun, cpl, matakuliah,
         mahasiswa, dan kalender_semester, jadi bentuknya dikunci - huruf kecil,
         angka, tanda hubung, 2-20 karakter, diawali huruf, dan sebaiknya tidak
-        diubah lagi setelah ada datanya. Hak tulis: admin untuk prodi apa pun
-        termasuk prodi baru; kaprodi hanya untuk prodi yang dipimpinnya.
+        diubah lagi setelah ada datanya. Hak tulis (2026-09-14): prodi baru hanya
+        admin; prodi yang sudah ada hanya kaprodi prodi itu - admin tidak
+        mengubahnya.
       operationId: simpanProdi
       requestBody:
         required: true
@@ -435,7 +436,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan admin maupun kaprodi prodi ini, atau bukan admin yang membuat prodi baru
+          description: Bukan kaprodi prodi yang sudah ada, atau bukan admin yang membuat prodi baru
           content:
             application/json:
               schema:
@@ -536,7 +537,7 @@ paths:
     post:
       tags:
         - kurikulum
-      summary: Tambah atau perbarui rumpun mata kuliah (kaprodi prodi itu atau admin)
+      summary: Tambah atau perbarui rumpun mata kuliah (kaprodi prodi itu)
       description: >-
         prodi_kode diambil dari path, bukan body. Mata kuliah TIDAK punya rute
         sendiri - koleksi matakuliah diturunkan dari daftar mata_kuliah rumpun
@@ -586,7 +587,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan admin maupun kaprodi prodi ini
+          description: Bukan kaprodi prodi ini
           content:
             application/json:
               schema:
@@ -643,7 +644,7 @@ paths:
     post:
       tags:
         - kurikulum
-      summary: Tambah atau perbarui capaian pembelajaran (kaprodi prodi itu atau admin)
+      summary: Tambah atau perbarui capaian pembelajaran (kaprodi prodi itu)
       description: >-
         prodi_kode diambil dari path. Idempoten per prodi+kode. Selama sebuah
         prodi belum punya CPL sama sekali, dasbor CPL mahasiswanya menjawab 422
@@ -679,7 +680,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan admin maupun kaprodi prodi ini
+          description: Bukan kaprodi prodi ini
           content:
             application/json:
               schema:
@@ -737,7 +738,7 @@ paths:
     post:
       tags:
         - kurikulum
-      summary: Tambah atau perbarui ritme mingguan (admin; kaprodi untuk ritme yang tidak dipakai prodi lain)
+      summary: Tambah atau perbarui ritme mingguan (kaprodi; ritme yang dipakai prodi lain tidak bisa diubah)
       description: >-
         Idempoten per nama. Hari harus nama hari Bahasa Indonesia dan moda
         salah satu dari asinkron, daring_sinkron, opsional_luring_daring,
@@ -746,7 +747,7 @@ paths:
         bersama semua prodi lewat nama, jadi kaprodi boleh menambah ritme baru
         dan mengubah ritme yang hanya dipakai kalender prodinya (atau belum
         dipakai kalender mana pun, draft ikut dihitung); ritme yang dipakai
-        kalender prodi lain khusus admin. kapasitas_sks_per_semester kosong
+        kalender prodi lain tidak bisa diubah dari satu prodi. kapasitas_sks_per_semester kosong
         dihitung dari total menit dibagi 85, dibulatkan satu desimal.
       operationId: simpanRitme
       requestBody:
@@ -769,7 +770,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan admin maupun kaprodi, atau kaprodi mengubah ritme yang dipakai kalender prodi lain
+          description: Bukan kaprodi, atau ritme yang diubah dipakai kalender prodi lain
           content:
             application/json:
               schema:
@@ -880,10 +881,10 @@ paths:
       description: >-
         Menulis data referensi kurikulum bawaan ke Mongo. Idempoten. Dengan query
         prodi, hanya prodi itu (data prodi, rumpun, CPL, mata kuliah turunannya;
-        ritme tidak ikut) - untuk kaprodi prodi itu atau admin; data bawaan hanya
-        ada untuk trpl dan bisdig, prodi lain 404. Tanpa query prodi, semua prodi
-        plus ritme mingguan - khusus admin. Rumpun dan CPL berkode sama yang
-        diketik lewat web ditimpa.
+        ritme tidak ikut) - untuk kaprodi prodi itu; data bawaan hanya ada untuk
+        trpl dan bisdig, prodi lain 404. Tanpa query prodi ditolak 422: seed
+        semua prodi sekaligus dicabut 2026-09-14. Rumpun dan CPL berkode sama
+        yang diketik lewat web ditimpa.
       operationId: seedKurikulum
       parameters:
         - in: query
@@ -892,7 +893,7 @@ paths:
           schema:
             type: string
           example: trpl
-          description: Kode prodi; kosong berarti seed semua prodi (admin)
+          description: Kode prodi (wajib; tanpa prodi ditolak 422)
       responses:
         '200':
           description: successful operation
@@ -913,13 +914,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Tanpa prodi dan bukan admin, atau bukan admin maupun kaprodi prodi itu
+          description: Bukan kaprodi prodi itu
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '404':
           description: Prodi itu tidak punya data seed bawaan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Query prodi tidak disebut (seed semua prodi sekaligus tidak tersedia)
           content:
             application/json:
               schema:
@@ -1885,7 +1892,7 @@ paths:
     get:
       tags:
         - kuisgerbang
-      summary: Daftar kuis beserta kunci jawaban (admin semua prodi; dosen prodi tempat ia mengajar)
+      summary: Daftar kuis beserta kunci jawaban (dosen, prodi tempat ia mengajar)
       description: >-
         Untuk menyusun dan menyunting kuis. Berbeda dari jalur mahasiswa, balasan
         ini memuat `indeks_benar` dan jumlah mahasiswa yang sudah mengerjakan.
@@ -1912,7 +1919,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen/admin, atau dosen untuk prodi tempat ia tidak mengajar
+          description: Bukan dosen, atau dosen untuk prodi tempat ia tidak mengajar (admin tidak punya hak lintas prodi)
           content:
             application/json:
               schema:
@@ -1922,7 +1929,7 @@ paths:
     post:
       tags:
         - kuisgerbang
-      summary: Buat atau ganti kuis satu prodi + rumpun + minggu (admin; dosen/kaprodi untuk prodi tempat ia mengajar)
+      summary: Buat atau ganti kuis satu prodi + rumpun + minggu (dosen/kaprodi untuk prodi tempat ia mengajar)
       description: >-
         Satu kuis per prodi + rumpun + minggu; mengirim kunci yang sama mengganti
         kuisnya. 1-50 soal, tiap soal 2-6 pilihan, `indeks_benar` (mulai 0) wajib
@@ -1950,7 +1957,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen/admin, atau dosen untuk prodi tempat ia tidak mengajar
+          description: Bukan dosen, atau dosen untuk prodi tempat ia tidak mengajar (admin tidak punya hak lintas prodi)
           content:
             application/json:
               schema:
@@ -1967,7 +1974,7 @@ paths:
     delete:
       tags:
         - kuisgerbang
-      summary: Hapus kuis (admin; dosen/kaprodi untuk prodinya)
+      summary: Hapus kuis (dosen/kaprodi untuk prodinya)
       description: >-
         Kuis yang sudah dikerjakan butuh `?konfirmasi=hapus`. Jawaban mahasiswa
         tidak ikut dihapus supaya riwayat skor tetap bisa diaudit.
@@ -1985,7 +1992,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen/admin, atau dosen untuk prodi tempat ia tidak mengajar
+          description: Bukan dosen, atau dosen untuk prodi tempat ia tidak mengajar (admin tidak punya hak lintas prodi)
           content:
             application/json:
               schema:
@@ -2612,7 +2619,7 @@ paths:
     post:
       tags:
         - materi
-      summary: Tambah materi ke katalog (admin; dosen/kaprodi untuk prodi tempat ia mengajar)
+      summary: Tambah materi ke katalog (dosen/kaprodi untuk prodi tempat ia mengajar)
       description: >-
         youtube_id boleh diisi ID 11 karakter atau tautan YouTube apa pun
         (watch, youtu.be, embed, shorts, live) - server mengurainya. Bacaan
@@ -2640,7 +2647,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen/admin, atau dosen untuk prodi tempat ia tidak mengajar
+          description: Bukan dosen, atau dosen untuk prodi tempat ia tidak mengajar (admin tidak punya hak lintas prodi)
           content:
             application/json:
               schema:
@@ -2692,7 +2699,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen/admin, atau dosen untuk prodi tempat ia tidak mengajar
+          description: Bukan dosen, atau dosen untuk prodi tempat ia tidak mengajar (admin tidak punya hak lintas prodi)
           content:
             application/json:
               schema:
@@ -2755,7 +2762,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen/admin, atau dosen untuk prodi tempat ia tidak mengajar
+          description: Bukan dosen, atau dosen untuk prodi tempat ia tidak mengajar (admin tidak punya hak lintas prodi)
           content:
             application/json:
               schema:
@@ -2833,7 +2840,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen/admin, atau dosen untuk prodi tempat ia tidak mengajar
+          description: Bukan dosen, atau dosen untuk prodi tempat ia tidak mengajar (admin tidak punya hak lintas prodi)
           content:
             application/json:
               schema:
@@ -3765,12 +3772,12 @@ paths:
     get:
       tags:
         - jabatan
-      summary: Daftar dosen untuk penetapan kaprodi (khusus admin)
+      summary: Daftar dosen (admin dan kaprodi)
       description: >-
         Dosen aktif yang punya NIP, urut nama, beserta jabatan (admin) dan
         kode prodi yang dipimpinnya sebagai kaprodi. Tanpa nomor WhatsApp.
-        Dipakai halaman Kelola Kaprodi (jabatan.html) sebagai pilihan dosen
-        untuk PUT /kurikulum/prodi/{prodi}/kaprodi.
+        Dipakai halaman Kelola Kaprodi (jabatan.html, admin) dan Dosen Pengampu
+        Prodi (pengampu.html, kaprodi).
       operationId: daftarDosenJabatan
       responses:
         '200':
@@ -3791,7 +3798,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan admin
+          description: Bukan admin maupun kaprodi
           content:
             application/json:
               schema:
@@ -3802,12 +3809,13 @@ paths:
     put:
       tags:
         - jabatan
-      summary: Atur prodi tempat dosen mengajar (khusus admin)
+      summary: Atur dosen pengampu prodi (kaprodi, untuk prodinya)
       description: >-
-        Mengganti dosentugas.prodi_kode satu dosen aktif. Daftar kosong
-        mengosongkan; setiap kode harus prodi yang ada. Menentukan prodi mana yang
-        kuis gerbangnya boleh disusun dosen itu (kaprodi otomatis untuk prodi yang
-        dipimpinnya).
+        Dosen pengampu prodi. Hanya kaprodi (2026-09-14; admin tidak), dan hanya
+        centang prodi yang dipimpinnya yang berubah - prodi lain milik dosen itu
+        tetap; menambahkan prodi di luar lingkupnya ditolak 403. Setiap kode harus
+        prodi yang ada. Menentukan prodi mana yang kuis gerbang dan katalog
+        materinya boleh dikelola dosen itu (kaprodi otomatis untuk prodinya).
       operationId: tetapkanProdiDosen
       parameters:
         - {in: path, name: nip, required: true, schema: {type: string}}
@@ -3836,7 +3844,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan admin
+          description: Bukan kaprodi, atau menambahkan prodi di luar prodi yang dipimpinnya
           content:
             application/json:
               schema:
