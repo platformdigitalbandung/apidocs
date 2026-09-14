@@ -85,6 +85,8 @@ tags:
     description: Rekaman sesi daring sinkron (YouTube) dengan tenggat tengah malam setelah sesi dan rekap keterlambatan untuk kaprodi
   - name: rapor
     description: Rapor per semester dan rekap nilai dari penilaian blok/proyek - skala huruf A-E, IP/IPK dari mata kuliah yang sudah dinilai
+  - name: beranda
+    description: Agenda beranda per peran - hal yang belum dikerjakan dan yang akan datang untuk admin, kaprodi, dosen, dan mahasiswa
   - name: jabatan
     description: Jabatan pimpinan - daftar dosen untuk penetapan kaprodi oleh super admin
   - name: forum
@@ -3769,6 +3771,53 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /beranda/agenda:
+    get:
+      tags:
+        - beranda
+      summary: Agenda beranda per peran (mahasiswa, dosen, kaprodi, admin)
+      description: >-
+        Hal yang belum dikerjakan (`sifat: perlu`) dan yang akan datang
+        (`sifat: akan`) untuk setiap peran yang dipegang pemilik token. Peran dicek
+        dari database, bukan dari pemilih peran di peramban: bagian yang tidak
+        dipegang selalu array kosong dan tidak disebut di `peran`. Bagian yang
+        disebut di `peran` tapi kosong berarti semuanya beres. Dihitung saat
+        diminta dari koleksi modul lain; butir yang gagal dihitung dilewati
+        (dicatat di log server) tanpa menggagalkan agenda.
+
+        Jenis butir per peran:
+        mahasiswa - materi_belum_selesai, kuis_belum_lulus (minggu berjalan
+        kalender terbit), proyek_kerja_menunggu, rpl_menunggu;
+        dosen - email_belum_diisi, forum_belum_dijawab (prodi mengajar),
+        proyek_kerja_putusan, proyek_kerja_tinjauan, rpl_menunggu,
+        rekaman_belum_terbit, materi_minggu_depan_kosong,
+        kuis_minggu_depan_kosong, ujian_diawasi;
+        kaprodi (per prodi yang dipimpin) - kurikulum_belum_lengkap,
+        pengampu_kosong, kalender_belum_terbit, forum_lewat_sla,
+        proyek_kerja_telat;
+        admin - prodi_tanpa_kaprodi, rujukan_nip_lama, dosen_tanpa_email.
+      operationId: agendaBeranda
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgendaBeranda'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor belum terdaftar sebagai mahasiswa maupun dosen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /jabatan/dosen:
     get:
       tags:
@@ -5355,6 +5404,32 @@ components:
           items: {$ref: '#/components/schemas/ForumUtas'}
         dijawab_tepat: {type: integer}
         dijawab_terlambat: {type: integer}
+    ButirAgenda:
+      type: object
+      required: [jenis, sifat, judul, jumlah, tautan]
+      properties:
+        jenis: {type: string, description: 'Kunci stabil, mis. kuis_belum_lulus (daftar lengkap di GET /beranda/agenda)'}
+        sifat: {type: string, enum: [perlu, akan], description: 'perlu = belum dikerjakan; akan = akan datang'}
+        judul: {type: string}
+        keterangan: {type: string}
+        jumlah: {type: integer, description: 'Jumlah hal yang dirangkum; 0 untuk butir tunggal'}
+        tautan: {type: string, description: 'Halaman frontend relatif tempat mengerjakannya, mis. kuis.html'}
+        prodi_kode: {type: string}
+        tenggat: {type: string, format: date-time}
+        mendesak: {type: boolean, description: Sudah lewat tenggat atau SLA}
+    AgendaBeranda:
+      type: object
+      properties:
+        peran:
+          type: array
+          items: {type: string, enum: [admin, kaprodi, dosen, mahasiswa]}
+          description: Peran yang dipegang (dan dihitung), urut dari tertinggi
+        admin: {type: array, items: {$ref: '#/components/schemas/ButirAgenda'}}
+        kaprodi: {type: array, items: {$ref: '#/components/schemas/ButirAgenda'}}
+        dosen: {type: array, items: {$ref: '#/components/schemas/ButirAgenda'}}
+        mahasiswa: {type: array, items: {$ref: '#/components/schemas/ButirAgenda'}}
+        minggu_berjalan: {type: integer, description: 'Minggu berjalan kalender terbit prodi mahasiswa/prodi mengajar; 0 di luar masa perkuliahan'}
+        dihitung: {type: string, format: date-time}
     DosenJabatan:
       type: object
       properties:
