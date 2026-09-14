@@ -131,11 +131,20 @@ paths:
         - tugas
       summary: Daftar tugas
       description: >-
-        Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster). Untuk mahasiswa, tiap tugas
-        membawa sudah_kirim dan kirim_terakhir miliknya sendiri.
+        Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster). Mahasiswa hanya menerima
+        tugas prodinya di roster (sejak 2026-09-15; query prodi diabaikan, tugas lama tanpa prodi tidak
+        ikut) dan tiap tugas membawa sudah_kirim dan kirim_terakhir miliknya sendiri. Dosen, kaprodi,
+        dan admin menerima semua tugas, bisa disaring dengan query prodi.
       operationId: daftarTugas
       security:
         - dosenToken: []
+      parameters:
+        - in: query
+          name: prodi
+          schema:
+            type: string
+          required: false
+          description: Kode prodi untuk menyaring daftar (hanya berlaku untuk dosen/kaprodi/admin)
       responses:
         '401':
           description: Tanpa token, token tidak valid/kedaluwarsa, atau draft=1 diminta tanpa token dosen yang sah
@@ -164,7 +173,9 @@ paths:
       tags:
         - tugas
       summary: Buat tugas baru
-      description: Hanya dosen yang sudah login lewat WhatsAuth (lihat /whatsauth/request) yang bisa membuat tugas
+      description: >-
+        Tugas wajib milik satu prodi. Hanya dosen pengampu prodi itu (dicentang kaprodi) atau kaprodinya
+        yang bisa membuatnya (keputusan pemilik produk 2026-09-15); admin tidak punya hak lintas prodi.
       operationId: buatTugas
       requestBody:
         content:
@@ -185,14 +196,23 @@ paths:
                   judul:
                     type: string
                     example: Tugas Besar Basis Data
+                  prodi_kode:
+                    type: string
+                    example: trpl
         '401':
-          description: Token dosen tidak valid
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen, atau bukan pengampu/kaprodi prodi tugas
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
-          description: Validasi gagal (judul/deskripsi tidak sesuai)
+          description: Validasi gagal (judul/deskripsi tidak sesuai, prodi kosong atau tidak ada di kurikulum)
           content:
             application/json:
               schema:
@@ -204,7 +224,9 @@ paths:
       tags:
         - tugas
       summary: Detail tugas
-      description: Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster).
+      description: >-
+        Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster). Untuk mahasiswa, tugas prodi
+        lain atau tugas lama tanpa prodi dijawab 404.
       operationId: detailTugas
       security:
         - dosenToken: []
@@ -241,8 +263,10 @@ paths:
                     type: string
                   deskripsi:
                     type: string
+                  prodi_kode:
+                    type: string
         '404':
-          description: Tugas tidak ditemukan
+          description: Tugas tidak ditemukan (untuk mahasiswa juga tugas prodi lain)
           content:
             application/json:
               schema:
@@ -282,7 +306,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Pemegang token bukan mahasiswa di roster (termasuk dosen/admin)
+          description: Pemegang token bukan mahasiswa di roster (termasuk dosen/admin), atau tugas bukan untuk prodinya
           content:
             application/json:
               schema:
@@ -1787,7 +1811,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen, atau email kampus dosen belum diisi
+          description: Bukan dosen, email kampus dosen belum diisi, atau bukan pengampu/kaprodi prodi kalender itu
           content:
             application/json:
               schema:
@@ -2173,7 +2197,7 @@ paths:
                   jawaban:
                     type: array
                     items:
-                      $ref: '#/components/schemas/JawabanKuis'
+                      $ref: '#/components/schemas/StatusJawabanKuis'
         '401':
           description: Token WhatsAuth tidak sah
           content:
@@ -3549,7 +3573,9 @@ paths:
         dan sesi bermoda daring_sinkron yang sudah berlangsung. Tenggat =
         tengah malam WIB setelah tanggal sesi; terlambat dicatat saat terbit.
         Satu sesi satu rekaman - terbit kedua ditolak, hapus dulu yang lama.
-        Email kampus pengunggah dari data dosen lewat nomor pada token.
+        Email kampus pengunggah dari data dosen lewat nomor pada token. Hanya dosen pengampu prodi
+        kalender itu (dicentang kaprodi) atau kaprodinya (keputusan pemilik produk 2026-09-15); prodi
+        dibaca dari kalender tersimpan. Admin tidak punya hak lintas prodi.
       operationId: terbitkanRekaman
       requestBody:
         required: true
@@ -3666,6 +3692,7 @@ paths:
       tags:
         - rekaman
       summary: Menghapus rekaman
+      description: Aturannya sama dengan menerbitkan - dosen pengampu prodi kalender rekaman itu atau kaprodinya.
       operationId: hapusRekaman
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}}
@@ -3686,7 +3713,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen atau admin
+          description: Bukan dosen pengampu atau kaprodi prodi kalender rekaman itu
           content:
             application/json:
               schema:
@@ -4982,6 +5009,10 @@ components:
           type: string
         deskripsi:
           type: string
+        prodi_kode:
+          type: string
+          description: Prodi pemilik tugas (sejak 2026-09-15). Kosong untuk tugas lama yang belum diberi prodi.
+          example: pai
         n_kiriman:
           type: integer
         sudah_kirim:
@@ -5002,8 +5033,13 @@ components:
         deskripsi:
           type: string
           example: Kerjakan rancangan ERD dan normalisasi
+        prodi_kode:
+          type: string
+          description: Prodi tugas; harus prodi tempat pembuat mengajar atau yang dipimpinnya
+          example: trpl
       required:
         - judul
+        - prodi_kode
     PerKiriman:
       type: object
       properties:
@@ -5756,6 +5792,26 @@ components:
           items:
             type: string
           example: ["80", "443", "22"]
+    StatusJawabanKuis:
+      description: >-
+        Satu baris riwayat kuis mahasiswa - pengerjaan (JawabanKuis) beserta prodi, rumpun, dan minggu
+        kuisnya, dibaca dari kuis saat diminta. Kosong kalau kuisnya sudah dihapus.
+      allOf:
+        - $ref: '#/components/schemas/JawabanKuis'
+        - type: object
+          properties:
+            prodi_kode:
+              type: string
+              example: pai
+            rumpun_kode:
+              type: string
+              example: R1
+            rumpun_nama:
+              type: string
+              example: Studi Al-Quran
+            minggu:
+              type: integer
+              example: 3
     JawabanKuis:
       description: Satu pengerjaan oleh satu mahasiswa atas satu kuis, disimpan per (kuis, nim).
       type: object
