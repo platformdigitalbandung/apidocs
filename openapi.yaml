@@ -41,14 +41,17 @@ tags:
       Bukan proctoring otomatis. Skor ujiannya diinput dosen lewat Modul Blok/Proyek.
   - name: materi
     description: >-
-      Katalog materi asinkron (video YouTube atau bacaan) per minggu rumpun.
-      Progres materi wajib menunjuk materi di katalog ini. Bacaan disimpan
-      sebagai teks, bukan tautan luar, supaya gulirnya bisa dilacak.
+      Katalog materi asinkron (video YouTube, bacaan, atau berkas PDF) per minggu
+      rumpun. Progres materi wajib menunjuk materi di katalog ini. Bacaan disimpan
+      sebagai teks, bukan tautan luar, supaya gulirnya bisa dilacak; berkas PDF
+      disimpan di repo storage GitHub privat dan dibaca di dalam platform supaya
+      halamannya bisa dilacak.
   - name: progresmateri
     description: >-
       Pelacakan konsumsi materi asinkron - seberapa jauh mahasiswa menyelesaikan
-      video atau bacaan per minggu rumpun, dikirim berkala oleh player web.
-      persen_selesai yang tersimpan tidak pernah turun. Tanpa perintah WhatsApp.
+      video, bacaan, atau berkas PDF per minggu rumpun, dikirim berkala oleh
+      player web. persen_selesai yang tersimpan tidak pernah turun, begitu juga
+      halaman_terakhir. Tanpa perintah WhatsApp.
   - name: rpl
     description: >-
       Rekognisi Pembelajaran Lampau - pengakuan pengalaman kerja SEBELUM masuk kuliah
@@ -2177,7 +2180,10 @@ paths:
       description: >-
         youtube_id boleh diisi ID 11 karakter atau tautan YouTube apa pun
         (watch, youtu.be, embed, shorts, live) - server mengurainya. Bacaan
-        wajib punya isi teks. Field milik jenis lain dikosongkan server.
+        wajib punya isi teks. Jenis berkas dibuat lebih dulu di sini untuk
+        mendapat id, berkas PDF-nya menyusul lewat POST /materi/{id}/berkas -
+        jadi materi berkas yang baru dibuat belum punya berkas. Field milik
+        jenis lain dikosongkan server.
       operationId: buatMateri
       requestBody:
         content:
@@ -2219,7 +2225,11 @@ paths:
       tags:
         - materi
       summary: Perbarui satu materi
-      description: Mengganti seluruh isi materi; pembuat aslinya dipertahankan.
+      description: >-
+        Mengganti seluruh isi materi; pembuat aslinya dipertahankan. Berkas PDF
+        yang sudah diunggah ikut terbawa selama jenisnya tetap `berkas` - body
+        pembaruan tidak memuatnya - dan dilepas kalau jenisnya diganti ke
+        video/bacaan.
       operationId: perbaruiMateri
       parameters:
         - name: id
@@ -2328,14 +2338,145 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /materi/{id}/berkas:
+    post:
+      tags:
+        - materi
+      summary: Unggah berkas PDF ke satu materi
+      description: >-
+        Multipart/form-data: berkas PDF pada field `berkas`, jumlah halamannya
+        pada `halaman`. Jumlah halaman ditetapkan saat dosen mengunggah - dosen
+        yang menentukan penyebut progres, bukan peramban mahasiswa. Hanya PDF,
+        diperiksa dari magic bytes `%PDF-` dan bukan dari nama berkasnya, dan
+        maksimal 20 MiB. Berkasnya naik ke repo storage GitHub privat lewat
+        GHPAT; yang masuk basis data hanya referensi repo/path/sha
+        (pdb/README.md poin 8), dan nama berkas dari dosen disanitasi dulu
+        sebelum dipakai jadi bagian path. Materinya sekaligus disetel berjenis
+        `berkas`.
+      operationId: unggahBerkasMateri
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - berkas
+                - halaman
+              properties:
+                berkas:
+                  type: string
+                  format: binary
+                  description: Berkas PDF, maksimal 20 MiB
+                halaman:
+                  type: integer
+                  minimum: 1
+                  description: >-
+                    Jumlah halaman PDF, dihitung peramban dosen sebelum
+                    mengunggah. Boleh juga dikirim sebagai query string dengan
+                    nama yang sama.
+                  example: 24
+      responses:
+        '200':
+          description: Berkas tersimpan - balasannya dokumen materi terbaru
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Materi'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Materi tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: >-
+            Berkas tidak dikirim atau tidak terbaca, bukan PDF, namanya kosong,
+            ukurannya lebih dari 20 MiB, atau halaman bukan bilangan lebih besar
+            dari 0
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '502':
+          description: Gagal mengunggah ke repo storage GitHub
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+    get:
+      tags:
+        - materi
+      summary: Ambil berkas PDF satu materi
+      description: >-
+        Butuh token WhatsAuth apa pun, sama seperti daftar katalog - mahasiswa di
+        roster maupun dosen/admin. Balasannya JSON dengan isi berkas dalam
+        base64, BUKAN biner: repo storage-nya privat sehingga peramban tidak bisa
+        mengambil berkasnya langsung dari GitHub, dan seluruh pemanggilan REST
+        frontend wajib lewat crootjs yang hanya mengurai JSON (pdb/README.md
+        bagian Frontend).
+      operationId: ambilBerkasMateri
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BerkasMateri'
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Materi tidak ada, bukan jenis berkas, atau belum punya berkas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '502':
+          description: Gagal membaca berkas dari repo storage GitHub
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /progresmateri:
     post:
       tags:
         - progresmateri
       summary: Catat progres satu materi asinkron
       description: >-
-        Dipanggil player video (YouTube Player API) atau pembaca materi
-        (scroll-tracking) secara berkala. NIM tidak dikirim - diambil dari
+        Dipanggil player video (YouTube Player API), pembaca materi
+        (scroll-tracking), atau pembaca berkas PDF (per halaman) secara berkala. NIM tidak dikirim - diambil dari
         roster lewat nomor WhatsApp pada token. Upsert per (nim, rumpun_kode,
         minggu, materi_id), dan persen_selesai yang tersimpan TIDAK PERNAH
         TURUN - memutar mundur untuk menonton ulang tidak boleh menghapus bukti
@@ -2373,8 +2514,8 @@ paths:
           description: >-
             Validasi gagal - rumpun_kode/materi_id kosong, materi_id lebih dari
             200 karakter, minggu di luar 1-52, persen_selesai di luar 0-100,
-            materi_id tidak menunjuk materi di katalog, atau materinya milik
-            prodi/rumpun/minggu lain
+            halaman_terakhir negatif, materi_id tidak menunjuk materi di katalog,
+            atau materinya milik prodi/rumpun/minggu lain
           content:
             application/json:
               schema:
@@ -5438,7 +5579,7 @@ components:
           example: Pengenalan Git
         jenis:
           type: string
-          enum: [video, bacaan]
+          enum: [video, bacaan, berkas]
         youtube_id:
           type: string
           description: Hanya untuk jenis video - ID 11 karakter yang sudah diurai server
@@ -5446,6 +5587,29 @@ components:
         isi:
           type: string
           description: Hanya untuk jenis bacaan - teks lengkapnya
+        berkas:
+          description: >-
+            Hanya untuk jenis berkas - referensi PDF di repo storage GitHub privat
+            (repo/path/sha), bukan isi berkasnya. Kosong selama berkasnya belum
+            diunggah lewat POST /materi/{id}/berkas.
+          allOf:
+            - $ref: '#/components/schemas/StorageRef'
+        nama_berkas:
+          type: string
+          description: >-
+            Nama berkas yang ditampilkan ke mahasiswa, sudah disanitasi. Path di
+            repo storage bukan ini - di sana namanya masih diawali id materi
+          example: slide-pekan-3.pdf
+        halaman:
+          type: integer
+          description: >-
+            Jumlah halaman PDF, ditetapkan saat dosen mengunggah - itu penyebut
+            progres per halaman, jadi tidak diambil dari peramban mahasiswa
+          example: 24
+        ukuran_byte:
+          type: integer
+          format: int64
+          example: 123456
         deskripsi:
           type: string
         dibuat_oleh:
@@ -5475,7 +5639,7 @@ components:
           maxLength: 200
         jenis:
           type: string
-          enum: [video, bacaan]
+          enum: [video, bacaan, berkas]
         youtube_id:
           type: string
           description: Wajib untuk video - ID 11 karakter atau tautan YouTube apa pun
@@ -5487,8 +5651,37 @@ components:
         deskripsi:
           type: string
           maxLength: 1000
+    BerkasMateri:
+      description: >-
+        Isi berkas PDF satu materi, dikirim base64 di dalam JSON. Bukan biner:
+        repo storage-nya privat sehingga peramban tidak bisa mengambilnya
+        langsung, dan frontend hanya memanggil REST lewat crootjs yang mengurai
+        JSON.
+      type: object
+      properties:
+        nama_berkas:
+          type: string
+          example: slide-pekan-3.pdf
+        mime:
+          type: string
+          example: application/pdf
+        halaman:
+          type: integer
+          description: Penyebut progres per halaman, ditetapkan dosen saat mengunggah
+          example: 24
+        ukuran_byte:
+          type: integer
+          format: int64
+          example: 123456
+        isi_base64:
+          type: string
+          format: byte
+          description: Isi berkas PDF dalam base64
+          example: JVBERi0xLjcK
     ProgresMateri:
-      description: Progres satu (nim, rumpun, minggu, materi). persen_selesai yang tersimpan tidak pernah turun.
+      description: >-
+        Progres satu (nim, rumpun, minggu, materi). persen_selesai yang tersimpan
+        tidak pernah turun, begitu juga halaman_terakhir.
       type: object
       properties:
         id:
@@ -5506,12 +5699,19 @@ components:
           example: 3
         materi_id:
           type: string
-          description: Slug/ID video atau bacaan, maksimal 200 karakter
+          description: Slug/ID materi di katalog (video, bacaan, atau berkas), maksimal 200 karakter
           example: video-pengenalan-git
         persen_selesai:
           type: number
           format: double
           example: 80
+        halaman_terakhir:
+          type: integer
+          description: >-
+            Hanya untuk materi jenis berkas - halaman terjauh yang sudah dibuka.
+            Keterangan untuk dosen; yang dipakai laporan kepatuhan tetap
+            persen_selesai.
+          example: 12
     CatatProgresRequest:
       type: object
       required: [rumpun_kode, minggu, materi_id, persen_selesai]
@@ -5534,6 +5734,13 @@ components:
           minimum: 0
           maximum: 100
           example: 45
+        halaman_terakhir:
+          type: integer
+          minimum: 0
+          description: >-
+            Opsional, dipakai materi jenis berkas. Digabung dengan aturan
+            tidak-pernah-turun yang sama dengan persen_selesai.
+          example: 12
     ProyekTelat:
       description: Satu proyek yang sudah melewati titik tengah semester tetapi tinjauan tengahnya belum lengkap.
       type: object
