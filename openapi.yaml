@@ -455,8 +455,10 @@ paths:
         - kurikulum
       summary: Menetapkan kaprodi satu prodi (khusus admin)
       description: >-
-        Menyimpan NIP dosen aktif (koleksi dosentugas) sebagai kaprodi prodi itu
-        (prodi.kaprodi_nip). NIP kosong mengosongkan jabatannya. Kaprodi hanya
+        Menyimpan email kampus dosen aktif (koleksi dosentugas) sebagai kaprodi
+        prodi itu (prodi.kaprodi_email; sejak 2026-09-14 menggantikan NIP). Email
+        kosong mengosongkan jabatannya. Dosen harus sudah mengisi email kampusnya.
+        Kaprodi hanya
         membuka laporan tingkat prodi untuk prodinya sendiri. Menyimpan ulang
         data prodi lewat POST /kurikulum/prodi tidak mengubah kaprodi. Admin
         dikenali dari peran admin di token atau jabatan admin di data dosen.
@@ -470,7 +472,7 @@ paths:
             schema:
               type: object
               properties:
-                nip: {type: string, description: NIP dosen aktif; kosong untuk mengosongkan}
+                email: {type: string, description: Email kampus dosen aktif; kosong untuk mengosongkan, example: "dosen@digitalbdg.ac.id"}
       responses:
         '200':
           description: prodi setelah kaprodi ditetapkan
@@ -487,7 +489,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
-          description: Prodi tidak ada, atau NIP bukan dosen aktif
+          description: Prodi tidak ada, atau email bukan milik dosen aktif
           content:
             application/json:
               schema:
@@ -1170,18 +1172,24 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
-  /dosen/nip:
+  /dosen/email:
     put:
       tags:
         - tugas
-      summary: Isi NIP dosen
-      description: Dosen hanya boleh mengisi NIP nomornya sendiri - kosongkan nohp untuk itu. Mengisi NIP dosen lain butuh peran admin, karena NIP menentukan proyek mana yang boleh dinilai seseorang. Sebelum rute ini ada, nip hanya bisa diisi lewat akses database langsung, padahal putusan proyek kerja serta pembuatan dan penilaian proyek blok semuanya berhenti tanpanya.
-      operationId: setNIPDosen
+      summary: Isi email kampus dosen (menggantikan NIP)
+      description: >-
+        Sejak 2026-09-14 platform tidak memakai NIP: identitas dosen adalah email
+        kampus, diisi dosen sendiri untuk nomornya sendiri (tidak ada jalur mengisi
+        email dosen lain). Wajib berdomain @digitalbdg.ac.id dan unik antar-dosen,
+        karena email menentukan wewenang - kaprodi, pembimbing proyek, pengawas
+        ujian. Rute lama PUT /dosen/nip dicabut.
+      operationId: setEmailDosen
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SetNIPRequest'
+              $ref: '#/components/schemas/SetEmailDosenRequest'
       responses:
         '200':
           description: successful operation
@@ -1190,14 +1198,11 @@ paths:
               schema:
                 type: object
                 properties:
-                  nohp:
-                    type: string
-                    example: "6281312000300"
                   nama:
                     type: string
-                  nip:
+                  email:
                     type: string
-                    example: "198501012010011001"
+                    example: "dosen@digitalbdg.ac.id"
                   aktif:
                     type: boolean
         '401':
@@ -1207,13 +1212,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen terdaftar, atau mencoba mengisi NIP dosen lain tanpa peran admin
+          description: Bukan dosen terdaftar
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
-          description: NIP kosong, terlalu pendek, memuat spasi, atau nomor tidak terdaftar sebagai dosen aktif
+          description: Email kosong, tidak sah, bukan @digitalbdg.ac.id, sudah dipakai dosen lain, atau nomor bukan dosen aktif
           content:
             application/json:
               schema:
@@ -1460,8 +1465,9 @@ paths:
         - proyekkerja
       summary: Proyek kerja milik pemegang token
       description: >-
-        Mengembalikan proyek yang dibimbing kalau nomor pada token adalah dosen yang
-        NIP-nya sudah terisi, selain itu proyek yang diajukan sendiri. Proyek milik
+        Mengembalikan proyek yang dibimbing kalau nomor pada token adalah dosen
+        (dicocokkan lewat email kampus, atau NIP lama pada proyek yang belum
+        dimigrasi), selain itu proyek yang diajukan sendiri. Proyek milik
         mahasiswa dicari lewat NIM dari roster `mahasiswa`, bukan lewat nomor WhatsApp
         yang tersalin di dokumen saat pengajuan - nomor bisa berganti, NIM tidak.
       operationId: proyekKerjaSaya
@@ -1484,12 +1490,6 @@ paths:
             kosong: nomor di luar roster tidak mungkin punya pengajuan, karena pengajuannya
             sendiri sudah ditolak lebih dulu - daftar kosong akan terbaca seperti "Anda
             belum pernah mengajukan".
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-        '422':
-          description: Nomor terdaftar sebagai dosen tetapi `nip`-nya belum diisi - isi lewat PUT /dosen/nip.
           content:
             application/json:
               schema:
@@ -1765,7 +1765,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen, atau NIP dosen belum diisi di data dosen
+          description: Bukan dosen, atau email kampus dosen belum diisi
           content:
             application/json:
               schema:
@@ -2175,7 +2175,8 @@ paths:
         Ditambahkan di luar tiga rute rencana modul: ketiga rute lain butuh id
         sesi, dan pengawas bisa jadi dosen yang berbeda dari yang menjadwalkan
         sehingga tidak pernah melihat id itu. pengawas=saya diterjemahkan jadi
-        NIP pemegang token. Diurutkan menurut tanggal_jam.
+        email kampus pemegang token (plus NIP lamanya selama sesi lama belum
+        dimigrasi). Diurutkan menurut tanggal_jam.
       operationId: daftarSesiUjian
       parameters:
         - in: query
@@ -2189,7 +2190,7 @@ paths:
           schema:
             type: string
           required: false
-          description: NIP pengawas, atau "saya" untuk NIP pemegang token
+          description: Email kampus pengawas, atau "saya" untuk pemegang token
           example: saya
       responses:
         '200':
@@ -2216,7 +2217,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
-          description: pengawas=saya tetapi NIP pemegang token belum diisi
+          description: pengawas=saya tetapi email kampus pemegang token belum diisi
           content:
             application/json:
               schema:
@@ -3527,7 +3528,7 @@ paths:
         dan sesi bermoda daring_sinkron yang sudah berlangsung. Tenggat =
         tengah malam WIB setelah tanggal sesi; terlambat dicatat saat terbit.
         Satu sesi satu rekaman - terbit kedua ditolak, hapus dulu yang lama.
-        NIP pengunggah dari data dosen lewat nomor pada token.
+        Email kampus pengunggah dari data dosen lewat nomor pada token.
       operationId: terbitkanRekaman
       requestBody:
         required: true
@@ -3549,7 +3550,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen, atau NIP dosen belum diisi
+          description: Bukan dosen, atau email kampus dosen belum diisi
           content:
             application/json:
               schema:
@@ -3774,8 +3775,10 @@ paths:
         - jabatan
       summary: Daftar dosen (admin dan kaprodi)
       description: >-
-        Dosen aktif yang punya NIP, urut nama, beserta jabatan (admin) dan
-        kode prodi yang dipimpinnya sebagai kaprodi. Tanpa nomor WhatsApp.
+        Dosen aktif, urut nama, beserta email kampus (kosong = belum diisi, belum
+        bisa ditetapkan), jabatan (admin), kode prodi yang dipimpinnya sebagai
+        kaprodi (termasuk rujukan NIP lama yang belum dimigrasi), dan prodi
+        mengajarnya. Tanpa nomor WhatsApp dan tanpa NIP.
         Dipakai halaman Kelola Kaprodi (jabatan.html, admin) dan Dosen Pengampu
         Prodi (pengampu.html, kaprodi).
       operationId: daftarDosenJabatan
@@ -3805,7 +3808,7 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
-  /jabatan/dosen/{nip}/prodi:
+  /jabatan/dosen/{email}/prodi:
     put:
       tags:
         - jabatan
@@ -3818,7 +3821,7 @@ paths:
         materinya boleh dikelola dosen itu (kaprodi otomatis untuk prodinya).
       operationId: tetapkanProdiDosen
       parameters:
-        - {in: path, name: nip, required: true, schema: {type: string}}
+        - {in: path, name: email, required: true, schema: {type: string}, description: Email kampus dosen, example: "dosen@digitalbdg.ac.id"}
       requestBody:
         required: true
         content:
@@ -3835,7 +3838,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  nip: {type: string}
+                  email: {type: string}
                   prodi_kode: {type: array, items: {type: string}}
         '401':
           description: Tanpa token, atau token tidak valid/kedaluwarsa
@@ -3850,7 +3853,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
-          description: Prodi tidak ada, atau NIP bukan dosen aktif
+          description: Prodi tidak ada, atau email bukan milik dosen aktif
           content:
             application/json:
               schema:
@@ -4021,8 +4024,8 @@ paths:
         - forum
       summary: Membalas pertanyaan forum
       description: >-
-        Penjawab dosen dikenali lewat NIP di data dosen; dosen yang NIP-nya belum
-        diisi ditolak, karena jawaban dosenlah yang menghentikan jam SLA dan
+        Penjawab dosen dikenali lewat email kampus di data dosen; dosen yang
+        emailnya belum diisi ditolak, karena jawaban dosenlah yang menghentikan jam SLA dan
         harus bisa dikaitkan ke seseorang. Mahasiswa di roster boleh membalas
         pertanyaan dari prodinya sendiri. Balasan dosen pertama mengubah status
         jadi dijawab dan mencatat dijawab_dosen_pada.
@@ -4059,7 +4062,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen ber-NIP, bukan mahasiswa di roster, atau mahasiswa dari prodi lain
+          description: Bukan dosen ber-email kampus, bukan mahasiswa di roster, atau mahasiswa dari prodi lain
           content:
             application/json:
               schema:
@@ -4203,7 +4206,7 @@ paths:
       tags:
         - proyekblok
       summary: Proyek blok milik pemegang token
-      description: Mengembalikan proyek yang dibimbing kalau nomor WhatsApp di token adalah dosen yang NIP-nya sudah terisi, selain itu proyek yang diikuti sebagai anggota beserta NIM pemilik nomor. Pada peran mahasiswa, nomor WhatsApp anggota lain dikosongkan. Dosen yang NIP-nya belum diisi mendapat peran dosen dengan daftar kosong dan tanpa nip. Fungsi domain yang sama dipakai perintah WhatsApp "daftar proyek saya".
+      description: Mengembalikan proyek yang dibimbing kalau nomor WhatsApp di token adalah dosen (dicocokkan lewat email kampus, atau NIP lama pada proyek yang belum dimigrasi), selain itu proyek yang diikuti sebagai anggota beserta NIM pemilik nomor. Pada peran mahasiswa, nomor WhatsApp anggota lain dikosongkan. Dosen yang email kampusnya belum diisi tetap mendapat peran dosen, dengan email kosong. Fungsi domain yang sama dipakai perintah WhatsApp "daftar proyek saya".
       operationId: proyekBlokSaya
       responses:
         '200':
@@ -4280,8 +4283,9 @@ paths:
         ada, bukan menambah baris baru.
 
 
-        Hanya dosen pembimbing proyek ini - NIP-nya cocok dengan dosen_nip
-        proyek - atau admin yang boleh menilai. Dosen lain yang terdaftar pun
+        Hanya dosen pembimbing proyek ini - email kampusnya cocok dengan
+        dosen_email proyek (atau NIP lama pada proyek yang belum dimigrasi) -
+        atau admin yang boleh menilai. Dosen lain yang terdaftar pun
         tidak boleh menilai proyek yang bukan bimbingannya.
 
 
@@ -5096,7 +5100,7 @@ components:
         tes_dosen: {type: number, description: Porsi dari rasio tes dosen yang lulus, 0..1, example: 0.7}
         coverage: {type: number, description: Porsi dari persen baris ter-cover, 0..1, example: 0.3}
         diperbarui: {type: string, format: date-time}
-        diubah_oleh: {type: string, description: NIP dosen yang terakhir mengubah - snapshot pelaku}
+        diubah_oleh: {type: string, description: Email kampus dosen yang terakhir mengubah - snapshot pelaku}
     BobotAutograderRequest:
       type: object
       required: [tes_dosen, coverage]
@@ -5135,7 +5139,7 @@ components:
         sesi_index: {type: integer, description: Posisi sesi di larik kalender terbit}
         youtube_id: {type: string, example: dQw4w9WgXcQ}
         judul: {type: string}
-        diunggah_oleh: {type: string, description: NIP dosen}
+        diunggah_oleh: {type: string, description: Email kampus dosen}
         diterbitkan_pada: {type: string, format: date-time}
         tenggat: {type: string, format: date-time, description: Tengah malam WIB setelah tanggal sesi}
         terlambat: {type: boolean}
@@ -5311,7 +5315,7 @@ components:
         forum_id: {type: string}
         peran: {type: string, enum: [dosen, mahasiswa]}
         nim: {type: string, description: Hanya untuk peran mahasiswa}
-        nip: {type: string, description: Hanya untuk peran dosen}
+        email: {type: string, description: Email kampus - hanya untuk peran dosen}
         isi: {type: string}
         dibuat: {type: string, format: date-time}
     TanyaForumRequest:
@@ -5354,7 +5358,7 @@ components:
     DosenJabatan:
       type: object
       properties:
-        nip: {type: string}
+        email: {type: string, description: Email kampus; kosong kalau dosen belum mengisinya}
         nama: {type: string}
         jabatan: {type: string, enum: [admin], description: Kosong untuk dosen tanpa jabatan institusi}
         kaprodi_prodi:
@@ -5558,10 +5562,10 @@ components:
         deskripsi:
           type: string
           example: Menyusun portofolio digital profesional sekaligus rencana usaha berbasis teknologi
-        dosen_nip:
+        dosen_email:
           type: string
-          description: NIP dosen pembimbing/penilai utama - hanya dia (atau admin) yang boleh menginput nilai
-          example: "198001012020121001"
+          description: Email kampus dosen pembimbing/penilai utama - hanya dia (atau admin) yang boleh menginput nilai
+          example: "dosen@digitalbdg.ac.id"
         anggota:
           type: array
           items:
@@ -5685,8 +5689,8 @@ components:
           example: Lab 2, Gedung A
         pengawas:
           type: string
-          description: NIP dosen/petugas
-          example: "198501012010121001"
+          description: Email kampus dosen pengawas (NIP pada data lama yang belum dimigrasi)
+          example: "dosen@digitalbdg.ac.id"
     SesiUjianRequest:
       type: object
       required:
@@ -5713,7 +5717,7 @@ components:
           example: Lab 2, Gedung A
         pengawas:
           type: string
-          description: NIP dosen/petugas
+          description: Email kampus dosen pengawas
     KehadiranUjian:
       description: Satu baris per (sesi, nim).
       type: object
@@ -5734,7 +5738,7 @@ components:
         dicatat_oleh:
           type: string
           readOnly: true
-          description: NIP pengawas yang check-in manual; admin tanpa NIP tercatat sebagai `wa:<nomor>`
+          description: Email kampus pengawas yang check-in manual; tanpa email tercatat sebagai `wa:<nomor>`
     StorageRef:
       description: >-
         Referensi berkas di repo storage GitHub privat. Yang disimpan ke database
@@ -5784,16 +5788,16 @@ components:
         dinilai_oleh:
           type: string
           readOnly: true
-          description: NIP peninjau; admin tanpa NIP tercatat sebagai `wa:<nomor>`
+          description: Email kampus peninjau; tanpa email tercatat sebagai `wa:<nomor>`
         catatan:
           type: string
     Prodi:
       type: object
       required: [kode, nama, sks_total, semester, jenjang]
       properties:
-        kaprodi_nip:
+        kaprodi_email:
           type: string
-          description: NIP dosen yang menjabat kaprodi; hanya diubah lewat PUT /kurikulum/prodi/{prodi}/kaprodi
+          description: Email kampus dosen yang menjabat kaprodi; hanya diubah lewat PUT /kurikulum/prodi/{prodi}/kaprodi
         id: {type: string}
         kode: {type: string, description: 'Huruf kecil/angka/tanda hubung, 2-20 karakter, diawali huruf. Kunci di rumpun, cpl, matakuliah, mahasiswa, kalender_semester', example: pai}
         nama: {type: string, example: Pendidikan Agama Islam}
@@ -5927,16 +5931,14 @@ components:
             NIM di GET /mahasiswa/{nim}/nilai dibuktikan lewat roster, bukan lewat
             nomor yang tersimpan di dokumen proyek ini.
           example: "6281234567890"
-    SetNIPRequest:
+    SetEmailDosenRequest:
       type: object
+      required: [email]
       properties:
-        nohp:
+        email:
           type: string
-          description: Kosongkan untuk mengisi NIP nomor sendiri. Diisi hanya oleh admin untuk dosen lain.
-          example: "6281312000300"
-        nip:
-          type: string
-          example: "198501012010011001"
+          description: Email kampus pemegang token, wajib @digitalbdg.ac.id
+          example: "dosen@digitalbdg.ac.id"
     Mahasiswa:
       description: Satu baris roster akademik. Bukan akun - autentikasi tetap WhatsAuth, dan phonenumber di sini yang menghubungkan token ke identitas akademik.
       type: object
@@ -6064,10 +6066,10 @@ components:
           example: Modul penagihan otomatis
         deskripsi:
           type: string
-        dosen_nip:
+        dosen_email:
           type: string
-          description: Diisi saat dosen memutuskan pengajuan
-          example: "198501012010011001"
+          description: Email kampus dosen, diisi saat dosen memutuskan pengajuan
+          example: "dosen@digitalbdg.ac.id"
         atasan_nama:
           type: string
           example: Ibu Atasan
@@ -6217,7 +6219,7 @@ components:
           type: string
         dibuat_oleh:
           type: string
-          description: NIP pembuat, atau "wa:<nomor>" kalau NIP-nya kosong
+          description: Email kampus pembuat, atau "wa:<nomor>" kalau emailnya kosong
     MateriRequest:
       type: object
       required: [prodi_kode, rumpun_kode, minggu, judul, jenis]
@@ -6360,7 +6362,7 @@ components:
           type: string
         status:
           type: string
-        dosen_nip:
+        dosen_email:
           type: string
         kurang:
           type: array
@@ -6413,9 +6415,9 @@ components:
         peran:
           type: string
           enum: [dosen, mahasiswa]
-        nip:
+        email:
           type: string
-          description: Diisi hanya untuk dosen
+          description: Email kampus, diisi hanya untuk dosen
         proyekkerja:
           type: array
           items:
@@ -6519,10 +6521,10 @@ components:
           type: string
           enum: [dosen, mahasiswa]
           example: mahasiswa
-        nip:
+        email:
           type: string
-          description: Diisi hanya untuk dosen yang NIP-nya sudah terdaftar
-          example: "198501012010011001"
+          description: Email kampus, diisi hanya untuk dosen yang sudah mengisinya
+          example: "dosen@digitalbdg.ac.id"
         nim:
           type: string
           description: NIM pemilik nomor, diisi hanya untuk peran mahasiswa
@@ -6570,8 +6572,8 @@ components:
           example: Portofolio rapi, presentasi perlu latihan lagi
         dinilai_oleh:
           type: string
-          description: Identitas penilai yang sebenarnya (bisa admin, bukan selalu pembimbing) - NIP dosen kalau nomor WhatsApp di token terdaftar punya NIP, kalau tidak nomornya sendiri dengan awalan "wa:"
-          example: "198001012020121001"
+          description: Identitas penilai yang sebenarnya (bisa admin, bukan selalu pembimbing) - email kampus dosen kalau sudah diisi, kalau tidak nomornya sendiri dengan awalan "wa:" (data lama bisa berisi NIP)
+          example: "dosen@digitalbdg.ac.id"
     KomponenNilai:
       description: Keempat komponen nilai, masing-masing berskala 0-100. Bobotnya tetap - hasil proyek 40%, ujian 30%, kuis 15%, presentasi 15% - dan dihitung di server, tidak disimpan per dokumen.
       type: object
@@ -6638,9 +6640,10 @@ components:
         deskripsi:
           type: string
           example: Menyusun portofolio digital profesional sekaligus rencana usaha berbasis teknologi
-        dosen_nip:
+        dosen_email:
           type: string
-          example: "198001012020121001"
+          description: Email kampus dosen aktif yang membimbing
+          example: "dosen@digitalbdg.ac.id"
         anggota:
           type: array
           items:
@@ -6666,7 +6669,7 @@ components:
         - prodi_kode
         - angkatan
         - judul
-        - dosen_nip
+        - dosen_email
     InputNilaiRequest:
       description: Body input nilai. nilai_akhir tidak ada di sini karena selalu dihitung server dari komponen dengan bobot tetap 40/30/15/15.
       type: object
