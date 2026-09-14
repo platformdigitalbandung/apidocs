@@ -1809,7 +1809,7 @@ paths:
     get:
       tags:
         - kuisgerbang
-      summary: Daftar kuis beserta kunci jawaban (dosen/admin)
+      summary: Daftar kuis beserta kunci jawaban (admin semua prodi; dosen prodi tempat ia mengajar)
       description: >-
         Untuk menyusun dan menyunting kuis. Berbeda dari jalur mahasiswa, balasan
         ini memuat `indeks_benar` dan jumlah mahasiswa yang sudah mengerjakan.
@@ -1836,7 +1836,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen atau admin
+          description: Bukan dosen/admin, atau dosen untuk prodi tempat ia tidak mengajar
           content:
             application/json:
               schema:
@@ -1846,7 +1846,7 @@ paths:
     post:
       tags:
         - kuisgerbang
-      summary: Buat atau ganti kuis satu prodi + rumpun + minggu (dosen/admin)
+      summary: Buat atau ganti kuis satu prodi + rumpun + minggu (admin; dosen/kaprodi untuk prodi tempat ia mengajar)
       description: >-
         Satu kuis per prodi + rumpun + minggu; mengirim kunci yang sama mengganti
         kuisnya. 1-50 soal, tiap soal 2-6 pilihan, `indeks_benar` (mulai 0) wajib
@@ -1874,7 +1874,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen atau admin
+          description: Bukan dosen/admin, atau dosen untuk prodi tempat ia tidak mengajar
           content:
             application/json:
               schema:
@@ -1891,7 +1891,7 @@ paths:
     delete:
       tags:
         - kuisgerbang
-      summary: Hapus kuis (dosen/admin)
+      summary: Hapus kuis (admin; dosen/kaprodi untuk prodinya)
       description: >-
         Kuis yang sudah dikerjakan butuh `?konfirmasi=hapus`. Jawaban mahasiswa
         tidak ikut dihapus supaya riwayat skor tetap bisa diaudit.
@@ -1909,7 +1909,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen atau admin
+          description: Bukan dosen/admin, atau dosen untuk prodi tempat ia tidak mengajar
           content:
             application/json:
               schema:
@@ -3719,6 +3719,57 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /jabatan/dosen/{nip}/prodi:
+    put:
+      tags:
+        - jabatan
+      summary: Atur prodi tempat dosen mengajar (khusus admin)
+      description: >-
+        Mengganti dosentugas.prodi_kode satu dosen aktif. Daftar kosong
+        mengosongkan; setiap kode harus prodi yang ada. Menentukan prodi mana yang
+        kuis gerbangnya boleh disusun dosen itu (kaprodi otomatis untuk prodi yang
+        dipimpinnya).
+      operationId: tetapkanProdiDosen
+      parameters:
+        - {in: path, name: nip, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                prodi_kode: {type: array, items: {type: string}, example: [pai]}
+      responses:
+        '200':
+          description: Prodi mengajar tersimpan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nip: {type: string}
+                  prodi_kode: {type: array, items: {type: string}}
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Prodi tidak ada, atau NIP bukan dosen aktif
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /forum:
     post:
       tags:
@@ -5223,6 +5274,10 @@ components:
           type: array
           items: {type: string}
           description: Kode prodi yang dipimpin sebagai kaprodi
+        prodi_kode:
+          type: array
+          items: {type: string}
+          description: Kode prodi tempat dosen mengajar (dosentugas.prodi_kode)
     MenitModa:
       type: object
       description: Menit instruksional menurut moda sesi kalender. Moda yang tidak dikenal dihitung di `lain` supaya `total` utuh.
@@ -6365,6 +6420,10 @@ components:
           type: array
           items: {type: string, enum: [admin, kaprodi]}
           description: Jabatan pimpinan dosen dari database saat itu
+        prodi_mengajar:
+          type: array
+          items: {type: string}
+          description: Prodi tempat dosen mengajar digabung prodi yang dipimpin (hanya dosen)
         kaprodi_prodi:
           type: array
           items: {type: string}
