@@ -691,14 +691,16 @@ paths:
     post:
       tags:
         - kurikulum
-      summary: Tambah atau perbarui ritme mingguan (admin; kaprodi hanya ritme baru)
+      summary: Tambah atau perbarui ritme mingguan (admin; kaprodi untuk ritme yang tidak dipakai prodi lain)
       description: >-
         Idempoten per nama. Hari harus nama hari Bahasa Indonesia dan moda
         salah satu dari asinkron, daring_sinkron, opsional_luring_daring,
         bebas. total_menit_per_minggu boleh dikosongkan - dijumlahkan dari
         sesinya; kalau diisi harus sama persis dengan jumlah itu. Ritme dipakai
-        bersama semua prodi, jadi kaprodi hanya boleh menambah nama ritme baru;
-        mengubah ritme yang sudah ada khusus admin.
+        bersama semua prodi lewat nama, jadi kaprodi boleh menambah ritme baru
+        dan mengubah ritme yang hanya dipakai kalender prodinya (atau belum
+        dipakai kalender mana pun, draft ikut dihitung); ritme yang dipakai
+        kalender prodi lain khusus admin.
       operationId: simpanRitme
       requestBody:
         required: true
@@ -720,7 +722,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan admin maupun kaprodi, atau kaprodi mengubah ritme yang sudah ada
+          description: Bukan admin maupun kaprodi, atau kaprodi mengubah ritme yang dipakai kalender prodi lain
           content:
             application/json:
               schema:
@@ -799,8 +801,22 @@ paths:
       tags:
         - kurikulum
       summary: Seed data referensi kurikulum
-      description: Menulis data referensi kurikulum (prodi, rumpun, CPL, ritme mingguan) ke Mongo. Idempoten, langkah manual satu kali dipanggil operator setelah deploy - khusus admin karena menimpa kurikulum semua prodi.
+      description: >-
+        Menulis data referensi kurikulum bawaan ke Mongo. Idempoten. Dengan query
+        prodi, hanya prodi itu (data prodi, rumpun, CPL, mata kuliah turunannya;
+        ritme tidak ikut) - untuk kaprodi prodi itu atau admin; data bawaan hanya
+        ada untuk trpl dan bisdig, prodi lain 404. Tanpa query prodi, semua prodi
+        plus ritme mingguan - khusus admin. Rumpun dan CPL berkode sama yang
+        diketik lewat web ditimpa.
       operationId: seedKurikulum
+      parameters:
+        - in: query
+          name: prodi
+          required: false
+          schema:
+            type: string
+          example: trpl
+          description: Kode prodi; kosong berarti seed semua prodi (admin)
       responses:
         '200':
           description: successful operation
@@ -813,7 +829,7 @@ paths:
                     type: boolean
                     example: true
                   ringkasan:
-                    type: object
+                    type: string
         '401':
           description: Tanpa token, atau token tidak valid/kedaluwarsa
           content:
@@ -821,7 +837,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan admin
+          description: Tanpa prodi dan bukan admin, atau bukan admin maupun kaprodi prodi itu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Prodi itu tidak punya data seed bawaan
           content:
             application/json:
               schema:
