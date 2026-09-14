@@ -388,6 +388,51 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /kurikulum/prodi/{prodi}/kaprodi:
+    put:
+      tags:
+        - kurikulum
+      summary: Menetapkan kaprodi satu prodi (khusus direktur)
+      description: >-
+        Menyimpan NIP dosen aktif (koleksi dosentugas) sebagai kaprodi prodi itu
+        (prodi.kaprodi_nip). NIP kosong mengosongkan jabatannya. Kaprodi hanya
+        membuka laporan tingkat prodi untuk prodinya sendiri. Menyimpan ulang
+        data prodi lewat POST /kurikulum/prodi tidak mengubah kaprodi. Direktur
+        dikenali dari peran admin di token atau jabatan direktur di data dosen.
+      operationId: tetapkanKaprodi
+      parameters:
+        - {name: prodi, in: path, required: true, schema: {type: string}, example: trpl}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nip: {type: string, description: NIP dosen aktif; kosong untuk mengosongkan}
+      responses:
+        '200':
+          description: prodi setelah kaprodi ditetapkan
+        '401':
+          description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan direktur
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Prodi tidak ada, atau NIP bukan dosen aktif
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /kurikulum/prodi/{prodi}/rumpun:
     get:
       tags:
@@ -1114,8 +1159,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Kaprodi yang memimpin lebih dari satu prodi belum memilih prodi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen atau admin
+          description: Bukan kaprodi prodi ini atau direktur. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri) dan direktur (semua prodi); dosen biasa ditolak
           content:
             application/json:
               schema:
@@ -2797,7 +2848,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: >-
+          description: Bukan kaprodi prodi ini atau direktur. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri) dan direktur (semua prodi); dosen biasa ditolak
             Bukan dosen atau admin
           content:
             application/json:
@@ -2861,7 +2912,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: >-
+          description: Bukan kaprodi prodi ini atau direktur. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri) dan direktur (semua prodi); dosen biasa ditolak
             Bukan dosen atau admin
           content:
             application/json:
@@ -3147,7 +3198,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen atau admin
+          description: Bukan kaprodi prodi ini atau direktur. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri) dan direktur (semua prodi); dosen biasa ditolak
           content:
             application/json:
               schema:
@@ -3256,7 +3307,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen atau admin
+          description: Bukan kaprodi prodi ini atau direktur. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri) dan direktur (semua prodi); dosen biasa ditolak
           content:
             application/json:
               schema:
@@ -3428,8 +3479,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Kaprodi yang memimpin lebih dari satu prodi belum memilih prodi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen atau admin
+          description: Bukan kaprodi prodi ini atau direktur. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri) dan direktur (semua prodi); dosen biasa ditolak
           content:
             application/json:
               schema:
@@ -5208,6 +5265,9 @@ components:
       type: object
       required: [kode, nama, sks_total, semester, jenjang]
       properties:
+        kaprodi_nip:
+          type: string
+          description: NIP dosen yang menjabat kaprodi; hanya diubah lewat PUT /kurikulum/prodi/{prodi}/kaprodi
         id: {type: string}
         kode: {type: string, description: 'Huruf kecil/angka/tanda hubung, 2-20 karakter, diawali huruf. Kunci di rumpun, cpl, matakuliah, mahasiswa, kalender_semester', example: pai}
         nama: {type: string, example: Pendidikan Agama Islam}
@@ -5917,6 +5977,14 @@ components:
       description: Proyek milik pemegang token - yang dibimbing (dosen) atau yang diikuti (mahasiswa).
       type: object
       properties:
+        jabatan:
+          type: array
+          items: {type: string, enum: [direktur, kaprodi]}
+          description: Jabatan pimpinan dosen dari database saat itu
+        kaprodi_prodi:
+          type: array
+          items: {type: string}
+          description: Kode prodi yang dipimpin sebagai kaprodi
         peran:
           type: string
           enum: [dosen, mahasiswa]
