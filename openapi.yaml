@@ -1805,6 +1805,129 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - dosenToken: []
+  /kuisgerbang:
+    get:
+      tags:
+        - kuisgerbang
+      summary: Daftar kuis beserta kunci jawaban (dosen/admin)
+      description: >-
+        Untuk menyusun dan menyunting kuis. Berbeda dari jalur mahasiswa, balasan
+        ini memuat `indeks_benar` dan jumlah mahasiswa yang sudah mengerjakan.
+      operationId: daftarKuisGerbang
+      parameters:
+        - {in: query, name: prodi, required: false, schema: {type: string}, example: pai}
+        - {in: query, name: rumpun, required: false, schema: {type: string}, example: R1}
+      responses:
+        '200':
+          description: Daftar kuis, urut prodi, rumpun, minggu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kuis:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KuisGerbangSunting'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+    post:
+      tags:
+        - kuisgerbang
+      summary: Buat atau ganti kuis satu prodi + rumpun + minggu (dosen/admin)
+      description: >-
+        Satu kuis per prodi + rumpun + minggu; mengirim kunci yang sama mengganti
+        kuisnya. 1-50 soal, tiap soal 2-6 pilihan, `indeks_benar` (mulai 0) wajib
+        menunjuk salah satu pilihan, ambang 0-100 (0 = bawaan 60). Rumpun harus ada
+        di kurikulum prodi itu. Kuis yang sudah dikerjakan mahasiswa tidak bisa
+        diganti (422), karena skor tercatat dihitung dari soal lama.
+      operationId: simpanKuisGerbang
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KuisGerbangSunting'
+      responses:
+        '200':
+          description: Kuis tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KuisGerbangSunting'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Susunan kuis tidak sah, rumpun tidak ada di prodi itu, atau kuis sudah dikerjakan mahasiswa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
+  /kuisgerbang/{id}:
+    delete:
+      tags:
+        - kuisgerbang
+      summary: Hapus kuis (dosen/admin)
+      description: >-
+        Kuis yang sudah dikerjakan butuh `?konfirmasi=hapus`. Jawaban mahasiswa
+        tidak ikut dihapus supaya riwayat skor tetap bisa diaudit.
+      operationId: hapusKuisGerbang
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: ObjectID kuis}
+        - {in: query, name: konfirmasi, required: false, schema: {type: string, enum: [hapus]}}
+      responses:
+        '200':
+          description: Terhapus
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan dosen atau admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kuis tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Kuis sudah dikerjakan dan belum dikonfirmasi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
   /kuisgerbang/{id}/submit:
     post:
       tags:
@@ -1813,7 +1936,7 @@ paths:
       description: >-
         Backend yang menghitung skor dan lulus. NIM diambil dari roster `mahasiswa`
         lewat nomor WhatsApp pada token, bukan dari body. Mengirim ulang memperbarui
-        baris yang sama.
+        baris yang sama. Kuis milik prodi lain ditolak 403.
       operationId: submitKuisGerbang
       parameters:
         - in: path
@@ -1848,6 +1971,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Kuis milik prodi lain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '404':
           description: Kuis tidak ada, atau nomor pada token belum terdaftar di roster
           content:
@@ -1867,9 +1996,13 @@ paths:
       tags:
         - kuisgerbang
       summary: Ambil soal kuis
-      description: Balasannya tidak pernah memuat `indeks_benar`.
+      description: >-
+        Balasannya tidak pernah memuat `indeks_benar`. Mahasiswa mendapat kuis
+        prodinya dari roster (query prodi diabaikan); dosen/admin wajib menyebut
+        prodi lewat query.
       operationId: soalKuisGerbang
       parameters:
+        - {in: query, name: prodi, required: false, schema: {type: string}, description: Wajib untuk dosen/admin}
         - in: path
           name: rumpun
           schema:
@@ -1894,13 +2027,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '404':
-          description: Belum ada kuis untuk rumpun dan minggu itu
+          description: Belum ada kuis untuk prodi, rumpun, dan minggu itu
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
-          description: Minggu bukan angka yang sah
+          description: Minggu bukan angka yang sah, atau dosen tidak menyebut prodi
           content:
             application/json:
               schema:
@@ -5305,11 +5438,14 @@ components:
           type: integer
           example: 8
     KuisGerbang:
-      description: Kuis gerbang satu rumpun pada satu minggu. Dalam balasan API, `soal` tidak pernah memuat `indeks_benar`.
+      description: Kuis gerbang satu prodi + rumpun pada satu minggu. Dalam balasan API untuk mahasiswa, `soal` tidak pernah memuat `indeks_benar`.
       type: object
       properties:
         id:
           type: string
+        prodi_kode:
+          type: string
+          example: pai
         rumpun_kode:
           type: string
           example: R1
@@ -5325,6 +5461,27 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SoalKuis'
+    KuisGerbangSunting:
+      description: Bentuk kuis untuk dosen - body penyusunan dan baris daftar. Memuat kunci jawaban; tidak pernah dipakai membalas mahasiswa.
+      type: object
+      required: [prodi_kode, rumpun_kode, minggu, soal]
+      properties:
+        id: {type: string, readOnly: true}
+        prodi_kode: {type: string, example: pai}
+        rumpun_kode: {type: string, example: R1}
+        minggu: {type: integer, example: 2}
+        ambang_lulus: {type: number, example: 70, description: 0 berarti bawaan 60}
+        dibuat_oleh: {type: string, readOnly: true}
+        dikerjakan: {type: integer, readOnly: true, description: Jumlah mahasiswa yang sudah mengerjakan}
+        soal:
+          type: array
+          items:
+            type: object
+            required: [pertanyaan, pilihan, indeks_benar]
+            properties:
+              pertanyaan: {type: string, example: "Rukun Islam ada berapa?"}
+              pilihan: {type: array, items: {type: string}, example: ["4", "5", "6"]}
+              indeks_benar: {type: integer, example: 1, description: Mulai 0}
     SoalKuis:
       description: Satu butir pilihan ganda. `indeks_benar` tidak pernah ikut dalam balasan.
       type: object
