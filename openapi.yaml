@@ -405,14 +405,15 @@ paths:
     post:
       tags:
         - kurikulum
-      summary: Tambah atau perbarui program studi (dosen/kaprodi)
+      summary: Tambah atau perbarui program studi (kaprodi prodi itu atau admin; prodi baru hanya admin)
       description: >-
         Membuat program studi baru bisa dilakukan tanpa ubah kode - sebelumnya
         satu-satunya sumber data kurikulum adalah seed hardcode di backend.
         Idempoten per kode. Kode prodi jadi kunci di rumpun, cpl, matakuliah,
         mahasiswa, dan kalender_semester, jadi bentuknya dikunci - huruf kecil,
         angka, tanda hubung, 2-20 karakter, diawali huruf, dan sebaiknya tidak
-        diubah lagi setelah ada datanya.
+        diubah lagi setelah ada datanya. Hak tulis: admin untuk prodi apa pun
+        termasuk prodi baru; kaprodi hanya untuk prodi yang dipimpinnya.
       operationId: simpanProdi
       requestBody:
         required: true
@@ -428,7 +429,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Prodi'
         '401':
-          description: Bukan dosen
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan admin maupun kaprodi prodi ini, atau bukan admin yang membuat prodi baru
           content:
             application/json:
               schema:
@@ -529,7 +536,7 @@ paths:
     post:
       tags:
         - kurikulum
-      summary: Tambah atau perbarui rumpun mata kuliah (dosen/kaprodi)
+      summary: Tambah atau perbarui rumpun mata kuliah (kaprodi prodi itu atau admin)
       description: >-
         prodi_kode diambil dari path, bukan body. Mata kuliah TIDAK punya rute
         sendiri - koleksi matakuliah diturunkan dari daftar mata_kuliah rumpun
@@ -564,7 +571,13 @@ paths:
                     items:
                       $ref: '#/components/schemas/MataKuliah'
         '401':
-          description: Bukan dosen
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan admin maupun kaprodi prodi ini
           content:
             application/json:
               schema:
@@ -587,7 +600,7 @@ paths:
     post:
       tags:
         - kurikulum
-      summary: Tambah atau perbarui capaian pembelajaran (dosen/kaprodi)
+      summary: Tambah atau perbarui capaian pembelajaran (kaprodi prodi itu atau admin)
       description: >-
         prodi_kode diambil dari path. Idempoten per prodi+kode. Selama sebuah
         prodi belum punya CPL sama sekali, dasbor CPL mahasiswanya menjawab 422
@@ -614,7 +627,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/CapaianPembelajaran'
         '401':
-          description: Bukan dosen
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan admin maupun kaprodi prodi ini
           content:
             application/json:
               schema:
@@ -672,12 +691,14 @@ paths:
     post:
       tags:
         - kurikulum
-      summary: Tambah atau perbarui ritme mingguan (dosen/kaprodi)
+      summary: Tambah atau perbarui ritme mingguan (admin; kaprodi hanya ritme baru)
       description: >-
         Idempoten per nama. Hari harus nama hari Bahasa Indonesia dan moda
         salah satu dari asinkron, daring_sinkron, opsional_luring_daring,
         bebas. total_menit_per_minggu boleh dikosongkan - dijumlahkan dari
-        sesinya; kalau diisi harus sama persis dengan jumlah itu.
+        sesinya; kalau diisi harus sama persis dengan jumlah itu. Ritme dipakai
+        bersama semua prodi, jadi kaprodi hanya boleh menambah nama ritme baru;
+        mengubah ritme yang sudah ada khusus admin.
       operationId: simpanRitme
       requestBody:
         required: true
@@ -693,7 +714,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/RitmeMingguan'
         '401':
-          description: Bukan dosen
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan admin maupun kaprodi, atau kaprodi mengubah ritme yang sudah ada
           content:
             application/json:
               schema:
@@ -772,7 +799,7 @@ paths:
       tags:
         - kurikulum
       summary: Seed data referensi kurikulum
-      description: Menulis data referensi kurikulum (prodi, rumpun, CPL, ritme mingguan) ke Mongo. Idempoten, langkah manual satu kali dipanggil operator setelah deploy - dilindungi token dosen yang sama dengan Portal Tugas.
+      description: Menulis data referensi kurikulum (prodi, rumpun, CPL, ritme mingguan) ke Mongo. Idempoten, langkah manual satu kali dipanggil operator setelah deploy - khusus admin karena menimpa kurikulum semua prodi.
       operationId: seedKurikulum
       responses:
         '200':
@@ -788,7 +815,13 @@ paths:
                   ringkasan:
                     type: object
         '401':
-          description: Token dosen tidak valid
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan admin
           content:
             application/json:
               schema:
