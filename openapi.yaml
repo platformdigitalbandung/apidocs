@@ -130,7 +130,9 @@ paths:
       tags:
         - tugas
       summary: Daftar tugas
-      description: Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster).
+      description: >-
+        Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster). Untuk mahasiswa, tiap tugas
+        membawa sudah_kirim dan kirim_terakhir miliknya sendiri.
       operationId: daftarTugas
       security:
         - dosenToken: []
@@ -3803,16 +3805,29 @@ paths:
         (dicatat di log server) tanpa menggagalkan agenda.
 
         Jenis butir per peran:
-        mahasiswa - materi_belum_selesai, kuis_belum_lulus (minggu berjalan
-        kalender terbit), proyek_kerja_menunggu, rpl_menunggu;
-        dosen - email_belum_diisi, forum_belum_dijawab (prodi mengajar),
-        proyek_kerja_putusan, proyek_kerja_tinjauan, rpl_menunggu,
+        mahasiswa - kalender_belum_terbit (akan; kalender prodi, angkatan,
+        dan semesternya belum terbit, jadi agenda mingguan belum dihitung),
+        materi_belum_selesai, kuis_belum_lulus (minggu berjalan kalender
+        terbit), proyek_kerja_menunggu, rpl_menunggu;
+        dosen - email_belum_diisi, belum_pengampu (belum dicentang mengajar
+        di prodi mana pun dan bukan kaprodi), forum_belum_dijawab (prodi
+        mengajar), proyek_kerja_putusan, proyek_kerja_tinjauan, rpl_menunggu,
+        kalender_belum_terbit (akan; prodi mengajar tanpa kalender terbit),
         rekaman_belum_terbit, materi_minggu_depan_kosong,
         kuis_minggu_depan_kosong, ujian_diawasi;
         kaprodi (per prodi yang dipimpin) - kurikulum_belum_lengkap,
-        pengampu_kosong, kalender_belum_terbit, forum_lewat_sla,
-        proyek_kerja_telat;
-        admin - prodi_tanpa_kaprodi, rujukan_nip_lama, dosen_tanpa_email.
+        pengampu_kosong, kalender_belum_terbit, proyek_kerja_telat,
+        forum_lewat_sla;
+        admin - prodi_tanpa_kaprodi, rujukan_nip_lama (kaprodi masih
+        memakai data lama karena belum mengisi email kampus),
+        dosen_tanpa_email.
+
+
+        Urutan: setiap bagian sudah diurutkan dan frontend menampilkannya apa
+        adanya. Bagian kaprodi mengikuti ketergantungan pekerjaan - kurikulum,
+        dosen pengampu, kalender, lalu laporan (proyek kerja, forum) - bukan
+        tanda mendesak. Bagian lain: `perlu` dulu, yang mendesak di depan,
+        lalu tenggat terdekat.
       operationId: agendaBeranda
       responses:
         '200':
@@ -4969,6 +4984,15 @@ components:
           type: string
         n_kiriman:
           type: integer
+        sudah_kirim:
+          type: boolean
+          description: >-
+            Hanya untuk token mahasiswa di roster (dicocokkan lewat NIM dari nomor pada token):
+            true bila ia sudah pernah mengirim jawaban untuk tugas ini. Tidak dikirim untuk dosen/admin.
+        kirim_terakhir:
+          type: string
+          format: date-time
+          description: Waktu kiriman terakhir mahasiswa pemegang token untuk tugas ini; hanya ada bila sudah_kirim true.
     BuatTugasRequest:
       type: object
       properties:
@@ -5429,7 +5453,7 @@ components:
         sifat: {type: string, enum: [perlu, akan], description: 'perlu = belum dikerjakan; akan = akan datang'}
         judul: {type: string}
         keterangan: {type: string}
-        jumlah: {type: integer, description: 'Jumlah hal yang dirangkum; 0 untuk butir tunggal'}
+        jumlah: {type: integer, description: 'Jumlah hal yang bisa dikerjakan satu per satu (mis. 3 pertanyaan forum); 0 untuk butir tunggal atau rincian yang bukan hitungan (mis. kekurangan kurikulum)'}
         tautan: {type: string, description: 'Halaman frontend relatif tempat mengerjakannya, mis. kuis.html'}
         prodi_kode: {type: string}
         tenggat: {type: string, format: date-time}
