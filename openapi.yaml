@@ -542,6 +542,11 @@ paths:
         sendiri - koleksi matakuliah diturunkan dari daftar mata_kuliah rumpun
         ini saat disimpan, aturan yang sama dengan jalur seed, supaya tidak ada
         dua daftar yang bisa berbeda diam-diam. Idempoten per prodi+kode.
+        sks rumpun wajib sama dengan jumlah SKS mata kuliahnya (422, tidak ada
+        yang disimpan). Penulisan mata kuliah yang salah tetap menyimpan
+        rumpunnya tanpa membentuk mata kuliah (422). Mata kuliah yang dihapus
+        atau diganti nama dari daftar ikut dihapus dari koleksi matakuliah
+        (matakuliah_dihapus); kalau sudah punya nilai proyek blok, ditolak 422.
       operationId: simpanRumpun
       parameters:
         - in: path
@@ -570,6 +575,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/MataKuliah'
+                  matakuliah_dihapus:
+                    type: array
+                    items: {type: string}
+                    description: Kode mata kuliah yang dilepas dari rumpun ini dan dihapus
         '401':
           description: Tanpa token, atau token tidak valid/kedaluwarsa
           content:
@@ -589,7 +598,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
-          description: Bentuk data tidak valid
+          description: Bentuk data tidak valid, penulisan mata kuliah salah (rumpun tetap tersimpan), SKS rumpun tidak sama jumlah SKS mata kuliah, atau mata kuliah yang dilepas sudah punya nilai
           content:
             application/json:
               schema:
@@ -597,6 +606,40 @@ paths:
       security:
         - dosenToken: []
   /kurikulum/prodi/{prodi}/cpl:
+    get:
+      tags:
+        - kurikulum
+      summary: Daftar CPL suatu prodi
+      description: Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster). Termasuk penguatan_usulan dan penopang_lain.
+      operationId: daftarCPL
+      security:
+        - dosenToken: []
+      parameters:
+        - {in: path, name: prodi, required: true, schema: {type: string}, description: Kode/slug program studi}
+      responses:
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor pada token belum terdaftar sebagai dosen, admin, atau mahasiswa di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cpl:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CapaianPembelajaran'
     post:
       tags:
         - kurikulum
@@ -605,6 +648,9 @@ paths:
         prodi_kode diambil dari path. Idempoten per prodi+kode. Selama sebuah
         prodi belum punya CPL sama sekali, dasbor CPL mahasiswanya menjawab 422
         dengan sebabnya - bukan 0 tercapai.
+        penguatan_usulan dan penopang_lain yang tidak dikirim diambil dari CPL
+        yang sudah ada (formulir web tidak punya isiannya); kirim [] untuk
+        mengosongkannya.
       operationId: simpanCPL
       parameters:
         - in: path
@@ -700,7 +746,8 @@ paths:
         bersama semua prodi lewat nama, jadi kaprodi boleh menambah ritme baru
         dan mengubah ritme yang hanya dipakai kalender prodinya (atau belum
         dipakai kalender mana pun, draft ikut dihitung); ritme yang dipakai
-        kalender prodi lain khusus admin.
+        kalender prodi lain khusus admin. kapasitas_sks_per_semester kosong
+        dihitung dari total menit dibagi 85, dibulatkan satu desimal.
       operationId: simpanRitme
       requestBody:
         required: true
@@ -797,6 +844,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
   /kurikulum/seed:
+    get:
+      tags:
+        - kurikulum
+      summary: Prodi yang punya data seed bawaan
+      description: Hanya pengguna terdaftar. Dipakai halaman Kurikulum untuk menyembunyikan kartu seed dari prodi tanpa data bawaan.
+      operationId: prodiBerSeed
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  prodi: {type: array, items: {type: string}, example: [trpl, bisdig]}
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor pada token belum terdaftar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - dosenToken: []
     post:
       tags:
         - kurikulum
