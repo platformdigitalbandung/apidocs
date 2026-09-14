@@ -4302,6 +4302,9 @@ components:
         cpl_kode:
           type: string
           example: CPL02
+        deskripsi:
+          type: string
+          description: Rumusan CPL-nya, kalau sudah diisi prodi
         domain:
           type: string
           example: Pengetahuan
@@ -5087,6 +5090,12 @@ components:
         prodi_kode: {type: string, description: Diisi dari path saat menulis}
         kode: {type: string, example: CPL01}
         domain: {type: string, example: sikap}
+        deskripsi:
+          type: string
+          description: >-
+            Rumusan CPL-nya sendiri. Opsional supaya dokumen lama yang hanya
+            berisi kode tetap terbaca.
+          example: Bertakwa kepada Tuhan Yang Maha Esa dan mampu menunjukkan sikap religius
         rumpun_penyentuh:
           type: array
           items: {type: string}
