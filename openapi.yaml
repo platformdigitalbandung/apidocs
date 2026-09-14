@@ -2126,6 +2126,11 @@ paths:
       description: >-
         Diurutkan minggu, urutan, lalu judul. Butuh token WhatsAuth apa pun -
         video unlisted tidak boleh terbuka untuk publik.
+      description: >-
+        Mahasiswa hanya melihat materi PRODINYA SENDIRI - query `prodi` yang
+        dikirim diabaikan untuk mereka, pola yang sama dengan `nim` pada daftar
+        autograder. Dosen dan admin melihat seluruh prodi dan boleh menyaring
+        lewat query.
       operationId: daftarMateri
       parameters:
         - in: query
@@ -2159,6 +2164,12 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Materi'
+        '403':
+          description: Bukan dosen, admin, maupun mahasiswa di roster - tanpa prodi tidak ada batas yang bisa dipakai
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '401':
           description: Token WhatsAuth tidak sah
           content:
@@ -2451,6 +2462,12 @@ paths:
                 $ref: '#/components/schemas/BerkasMateri'
         '401':
           description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Materi milik prodi lain, atau pembaca bukan dosen/admin/mahasiswa di roster
           content:
             application/json:
               schema:
