@@ -27,7 +27,7 @@ tags:
       description: Contoh Kode WebHook
       url: https://github.com/whatsauth/webhook
   - name: kalender
-    description: Kalender akademik per prodi/angkatan/semester, diturunkan dari ritme mingguan kurikulum. Baca publik hanya untuk kalender yang sudah diterbitkan.
+    description: Kalender akademik per prodi/angkatan/semester, diturunkan dari ritme mingguan kurikulum. Baca untuk semua pengguna terdaftar, hanya kalender yang sudah diterbitkan. Buat, sunting, terbitkan, dan hapus hanya kaprodi prodi kalender itu (keputusan pemilik produk 2026-09-14) - admin dan dosen biasa ditolak 403.
   - name: proyekkerja
     description: Modul Proyek Kerja/Magang - proyek semester-panjang di tempat kerja mahasiswa, disetujui dosen lalu ditinjau dua pihak (dosen dan atasan) pada tengah dan akhir semester.
   - name: kuisgerbang
@@ -136,7 +136,7 @@ paths:
         - dosenToken: []
       responses:
         '401':
-          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          description: Tanpa token, token tidak valid/kedaluwarsa, atau draft=1 diminta tanpa token dosen yang sah
           content:
             application/json:
               schema:
@@ -996,17 +996,11 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/KalenderSemester'
-        '401':
-          description: draft=1 diminta tanpa token dosen yang sah
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
     post:
       tags:
         - kalender
       summary: Buat draft kalender semester
-      description: Membuat draft kalender dari ritme mingguan kurikulum - tanggal tiap sesi diisi otomatis dari pola mingguan, lalu boleh disunting selagi masih draft. Satu prodi+angkatan+semester hanya boleh punya satu kalender. Hanya dosen (atau admin) lewat WhatsAuth.
+      description: Membuat draft kalender dari ritme mingguan kurikulum - tanggal tiap sesi diisi otomatis dari pola mingguan, lalu boleh disunting selagi masih draft. Satu prodi+angkatan+semester hanya boleh punya satu kalender. Hanya kaprodi prodi_kode itu lewat WhatsAuth.
       operationId: buatKalender
       requestBody:
         content:
@@ -1026,6 +1020,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Pemegang token bukan kaprodi prodi_kode yang dikirim (admin dan dosen biasa termasuk)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
         '422':
           description: Body tidak valid, tanggal_mulai bukan YYYY-MM-DD, prodi tidak ada di data kurikulum, ritme mingguan belum di-seed, atau kalender untuk kombinasi itu sudah ada
           content:
@@ -1039,7 +1039,7 @@ paths:
       tags:
         - kalender
       summary: Hapus kalender
-      description: Menghapus kalender - dipakai membatalkan rencana yang salah atau membersihkan kalender percobaan. Draft langsung terhapus. Kalender yang sudah diterbitkan hanya terhapus kalau konfirmasi=terbit disertakan, karena mahasiswa sudah melihatnya dan pembatalannya perlu diumumkan.
+      description: Menghapus kalender (hanya kaprodi prodi kalender itu) - dipakai membatalkan rencana yang salah atau membersihkan kalender percobaan. Draft langsung terhapus. Kalender yang sudah diterbitkan hanya terhapus kalau konfirmasi=terbit disertakan, karena mahasiswa sudah melihatnya dan pembatalannya perlu diumumkan.
       operationId: hapusKalender
       parameters:
         - in: path
@@ -1070,7 +1070,13 @@ paths:
                     type: string
                     example: 6aa3f4f514984a96f23147dd
         '401':
-          description: Bukan dosen atau token tidak sah
+          description: Token kosong, tidak valid, atau kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Pemegang token bukan kaprodi prodi kalender itu (admin dan dosen biasa termasuk)
           content:
             application/json:
               schema:
@@ -1093,7 +1099,7 @@ paths:
       tags:
         - kalender
       summary: Sunting sesi kalender (hanya selagi draft)
-      description: Mengganti seluruh daftar sesi kalender. Ditolak kalau kalender sudah diterbitkan - perubahan jadwal setelah terbit diumumkan, bukan diubah diam-diam.
+      description: Mengganti seluruh daftar sesi kalender (hanya kaprodi prodi kalender itu). Ditolak kalau kalender sudah diterbitkan - perubahan jadwal setelah terbit diumumkan, bukan diubah diam-diam.
       operationId: gantiSesiKalender
       parameters:
         - in: path
@@ -1120,7 +1126,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/KalenderSemester'
         '401':
-          description: Bukan dosen atau token tidak sah
+          description: Token kosong, tidak valid, atau kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Pemegang token bukan kaprodi prodi kalender itu (admin dan dosen biasa termasuk)
           content:
             application/json:
               schema:
@@ -1144,7 +1156,7 @@ paths:
       tags:
         - kalender
       summary: Terbitkan kalender
-      description: Menandai kalender sebagai resmi sehingga terlihat publik. Idempoten - memanggil ulang tidak mengubah waktu terbit yang sudah tercatat.
+      description: Menandai kalender sebagai resmi sehingga terlihat semua pengguna terdaftar, termasuk mahasiswa prodi itu. Hanya kaprodi prodi kalender itu. Idempoten - memanggil ulang tidak mengubah waktu terbit yang sudah tercatat.
       operationId: terbitkanKalender
       parameters:
         - in: path
@@ -1161,7 +1173,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/KalenderSemester'
         '401':
-          description: Bukan dosen atau token tidak sah
+          description: Token kosong, tidak valid, atau kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Pemegang token bukan kaprodi prodi kalender itu (admin dan dosen biasa termasuk)
           content:
             application/json:
               schema:
@@ -2561,7 +2579,6 @@ paths:
       description: >-
         Diurutkan minggu, urutan, lalu judul. Butuh token WhatsAuth apa pun -
         video unlisted tidak boleh terbuka untuk publik.
-      description: >-
         Mahasiswa hanya melihat materi PRODINYA SENDIRI - query `prodi` yang
         dikirim diabaikan untuk mereka, pola yang sama dengan `nim` pada daftar
         autograder. Dosen dan admin melihat seluruh prodi dan boleh menyaring
