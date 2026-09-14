@@ -85,8 +85,6 @@ tags:
     description: Rekaman sesi daring sinkron (YouTube) dengan tenggat tengah malam setelah sesi dan rekap keterlambatan untuk kaprodi
   - name: rapor
     description: Rapor per semester dan rekap nilai dari penilaian blok/proyek - skala huruf A-E, IP/IPK dari mata kuliah yang sudah dinilai
-  - name: jabatan
-    description: Jabatan pimpinan - daftar dosen untuk penetapan kaprodi oleh direktur
   - name: forum
     description: Forum asinkron per rumpun per minggu dengan SLA respons dosen 1x24 jam yang hanya berjalan Senin-Rabu WIB
   - name: kepatuhan
@@ -435,51 +433,6 @@ paths:
                 $ref: '#/components/schemas/DetailError'
         '422':
           description: Bentuk data tidak valid
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-      security:
-        - dosenToken: []
-  /kurikulum/prodi/{prodi}/kaprodi:
-    put:
-      tags:
-        - kurikulum
-      summary: Menetapkan kaprodi satu prodi (khusus direktur)
-      description: >-
-        Menyimpan NIP dosen aktif (koleksi dosentugas) sebagai kaprodi prodi itu
-        (prodi.kaprodi_nip). NIP kosong mengosongkan jabatannya. Kaprodi hanya
-        membuka laporan tingkat prodi untuk prodinya sendiri. Menyimpan ulang
-        data prodi lewat POST /kurikulum/prodi tidak mengubah kaprodi. Direktur
-        dikenali dari peran admin di token atau jabatan direktur di data dosen.
-      operationId: tetapkanKaprodi
-      parameters:
-        - {name: prodi, in: path, required: true, schema: {type: string}, example: trpl}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                nip: {type: string, description: NIP dosen aktif; kosong untuk mengosongkan}
-      responses:
-        '200':
-          description: prodi setelah kaprodi ditetapkan
-        '401':
-          description: Token WhatsAuth tidak sah
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-        '403':
-          description: Bukan direktur
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-        '422':
-          description: Prodi tidak ada, atau NIP bukan dosen aktif
           content:
             application/json:
               schema:
@@ -1276,7 +1229,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan kaprodi prodi ini atau direktur. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri) dan direktur (semua prodi); dosen biasa ditolak
+          description: Bukan kaprodi prodi ini. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri); dosen biasa ditolak
           content:
             application/json:
               schema:
@@ -2973,7 +2926,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan kaprodi prodi ini atau direktur. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri) dan direktur (semua prodi); dosen biasa ditolak
+          description: Bukan kaprodi prodi ini. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri); dosen biasa ditolak
             Bukan dosen atau admin
           content:
             application/json:
@@ -3037,7 +2990,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan kaprodi prodi ini atau direktur. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri) dan direktur (semua prodi); dosen biasa ditolak
+          description: Bukan kaprodi prodi ini. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri); dosen biasa ditolak
             Bukan dosen atau admin
           content:
             application/json:
@@ -3323,7 +3276,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan kaprodi prodi ini atau direktur. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri) dan direktur (semua prodi); dosen biasa ditolak
+          description: Bukan kaprodi prodi ini. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri); dosen biasa ditolak
           content:
             application/json:
               schema:
@@ -3432,7 +3385,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan kaprodi prodi ini atau direktur. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri) dan direktur (semua prodi); dosen biasa ditolak
+          description: Bukan kaprodi prodi ini. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri); dosen biasa ditolak
           content:
             application/json:
               schema:
@@ -3488,43 +3441,6 @@ paths:
                 $ref: '#/components/schemas/DetailError'
         '404':
           description: NIM tidak ada di roster
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-      security:
-        - dosenToken: []
-  /jabatan/dosen:
-    get:
-      tags:
-        - jabatan
-      summary: Daftar dosen untuk penetapan kaprodi (khusus direktur)
-      description: >-
-        Dosen aktif yang punya NIP, urut nama, beserta jabatan (direktur) dan
-        kode prodi yang dipimpinnya sebagai kaprodi. Tanpa nomor WhatsApp.
-        Dipakai halaman Kelola Kaprodi (jabatan.html) sebagai pilihan dosen
-        untuk PUT /kurikulum/prodi/{prodi}/kaprodi.
-      operationId: daftarDosenJabatan
-      responses:
-        '200':
-          description: successful operation
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  dosen:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/DosenJabatan'
-        '401':
-          description: Token WhatsAuth tidak sah
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-        '403':
-          description: Bukan direktur
           content:
             application/json:
               schema:
@@ -3648,7 +3564,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan kaprodi prodi ini atau direktur. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri) dan direktur (semua prodi); dosen biasa ditolak
+          description: Bukan kaprodi prodi ini. Laporan tingkat prodi hanya untuk kaprodi (prodinya sendiri); dosen biasa ditolak
           content:
             application/json:
               schema:
@@ -5025,16 +4941,6 @@ components:
           items: {$ref: '#/components/schemas/ForumUtas'}
         dijawab_tepat: {type: integer}
         dijawab_terlambat: {type: integer}
-    DosenJabatan:
-      type: object
-      properties:
-        nip: {type: string}
-        nama: {type: string}
-        jabatan: {type: string, enum: [direktur], description: Kosong untuk dosen tanpa jabatan institusi}
-        kaprodi_prodi:
-          type: array
-          items: {type: string}
-          description: Kode prodi yang dipimpin sebagai kaprodi
     MenitModa:
       type: object
       description: Menit instruksional menurut moda sesi kalender. Moda yang tidak dikenal dihitung di `lain` supaya `total` utuh.
@@ -6151,8 +6057,8 @@ components:
       properties:
         jabatan:
           type: array
-          items: {type: string, enum: [direktur, kaprodi]}
-          description: Jabatan pimpinan dosen dari database saat itu
+          items: {type: string, enum: [kaprodi]}
+          description: Jabatan pimpinan dosen dari database saat itu (direktur dihapus 2026-09-14)
         kaprodi_prodi:
           type: array
           items: {type: string}
