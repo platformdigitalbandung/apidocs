@@ -2612,7 +2612,7 @@ paths:
     post:
       tags:
         - materi
-      summary: Tambah materi ke katalog
+      summary: Tambah materi ke katalog (admin; dosen/kaprodi untuk prodi tempat ia mengajar)
       description: >-
         youtube_id boleh diisi ID 11 karakter atau tautan YouTube apa pun
         (watch, youtu.be, embed, shorts, live) - server mengurainya. Bacaan
@@ -2640,7 +2640,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen atau admin
+          description: Bukan dosen/admin, atau dosen untuk prodi tempat ia tidak mengajar
           content:
             application/json:
               schema:
@@ -2692,7 +2692,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen atau admin
+          description: Bukan dosen/admin, atau dosen untuk prodi tempat ia tidak mengajar
           content:
             application/json:
               schema:
@@ -2755,7 +2755,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen atau admin
+          description: Bukan dosen/admin, atau dosen untuk prodi tempat ia tidak mengajar
           content:
             application/json:
               schema:
@@ -2780,9 +2780,11 @@ paths:
         - materi
       summary: Unggah berkas PDF ke satu materi
       description: >-
-        Multipart/form-data: berkas PDF pada field `berkas`, jumlah halamannya
-        pada `halaman`. Jumlah halaman ditetapkan saat dosen mengunggah - dosen
-        yang menentukan penyebut progres, bukan peramban mahasiswa. Hanya PDF,
+        Multipart/form-data: berkas PDF pada field `berkas`. Jumlah halaman
+        (penyebut progres) DIHITUNG SERVER dari berkasnya sejak 2026-09-14;
+        field `halaman` kiriman peramban dosen hanya dipakai kalau server gagal
+        mengurai PDF-nya. Hanya admin, atau dosen/kaprodi untuk prodi materi
+        itu (prodi tempat ia mengajar). Hanya PDF,
         diperiksa dari magic bytes `%PDF-` dan bukan dari nama berkasnya, dan
         maksimal 20 MiB. Berkasnya naik ke repo storage GitHub privat lewat
         GHPAT; yang masuk basis data hanya referensi repo/path/sha
@@ -2804,7 +2806,6 @@ paths:
               type: object
               required:
                 - berkas
-                - halaman
               properties:
                 berkas:
                   type: string
@@ -2814,9 +2815,9 @@ paths:
                   type: integer
                   minimum: 1
                   description: >-
-                    Jumlah halaman PDF, dihitung peramban dosen sebelum
-                    mengunggah. Boleh juga dikirim sebagai query string dengan
-                    nama yang sama.
+                    Opsional. Jumlah halaman hitungan peramban dosen, dipakai
+                    hanya kalau server tidak bisa menghitung dari berkasnya.
+                    Boleh juga dikirim sebagai query string.
                   example: 24
       responses:
         '200':
@@ -2832,7 +2833,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen atau admin
+          description: Bukan dosen/admin, atau dosen untuk prodi tempat ia tidak mengajar
           content:
             application/json:
               schema:
@@ -2926,7 +2927,9 @@ paths:
         (2026-09-13), materi_id WAJIB berupa id materi di katalog, dan materi
         itu harus milik prodi mahasiswa serta rumpun_kode dan minggu yang
         dilaporkan - tanpa itu progres bisa dilaporkan atas materi pilihan
-        sendiri.
+        sendiri. Untuk materi berkas (sejak 2026-09-14) halaman_terakhir tidak
+        boleh melebihi jumlah halaman berkas, dan persen_selesai dipangkas ke
+        halaman terjauh dibagi jumlah halaman.
       operationId: catatProgresMateri
       requestBody:
         content:
@@ -2956,7 +2959,7 @@ paths:
           description: >-
             Validasi gagal - rumpun_kode/materi_id kosong, materi_id lebih dari
             200 karakter, minggu di luar 1-52, persen_selesai di luar 0-100,
-            halaman_terakhir negatif, materi_id tidak menunjuk materi di katalog,
+            halaman_terakhir negatif atau melebihi jumlah halaman berkas, materi_id tidak menunjuk materi di katalog,
             atau materinya milik prodi/rumpun/minggu lain
           content:
             application/json:
