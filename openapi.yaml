@@ -980,6 +980,75 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
+  /kurikulum/prodi/{prodi}/matakuliah/{kode}:
+    put:
+      tags:
+        - kurikulum
+      summary: Isi kode institusi (SIAKAD/PDDikti) satu mata kuliah (kaprodi prodi itu)
+      description: >-
+        Atribut tambahan `kode_institusi` pada mata kuliah yang diturunkan dari
+        rumpun - bukan kunci; kuncinya tetap `kode`. Dipertahankan saat rumpunnya
+        disimpan ulang, tapi tidak ikut ke mata kuliah yang berganti nama (kode
+        platformnya berubah). Kirim `""` untuk menghapus atributnya. Bentuknya
+        dirapikan ke huruf besar; maksimal 32 karakter huruf, angka, titik,
+        garis miring, atau tanda hubung.
+      operationId: setKodeInstitusiMataKuliah
+      security:
+        - whatsauthToken: []
+      parameters:
+        - in: path
+          name: prodi
+          schema:
+            type: string
+          required: true
+          description: Kode/slug program studi
+        - in: path
+          name: kode
+          schema:
+            type: string
+          required: true
+          description: Kode mata kuliah di platform (`MataKuliah.kode`), mis. MKWP01-PENGANTAR-BISNIS-DIGITAL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                kode_institusi:
+                  type: string
+                  example: BD-1103
+      responses:
+        '200':
+          description: tersimpan; mata kuliah setelah diubah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MataKuliah'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan kaprodi prodi ini
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Prodi belum ada, atau mata kuliah tidak ada di prodi itu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Kode institusi tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
   /kurikulum/seed:
     get:
       tags:
@@ -6301,6 +6370,10 @@ components:
         semester:
           type: integer
           example: 1
+        kode_institusi:
+          type: string
+          description: Opsional; kode SIAKAD/PDDikti, diisi kaprodi lewat PUT .../matakuliah/{kode}
+          example: BD-1103
         cpl:
           type: array
           description: Opsional; pemetaan CPL yang berlaku sekarang ada di level rumpun
