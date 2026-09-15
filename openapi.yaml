@@ -1,23 +1,125 @@
 openapi: 3.0.3
 info:
-  title: Dokumen API Platform
-  description: >-
-    Penjelasan tata cara pemakaian API dari Whatsauth.
+  title: Dokumen API Platform Digital Bandung
+  description: |
+    API backend **Platform Digital Bandung** (`https://apk.fly.dev`) — satu backend
+    Go (GoCroot) untuk dua kanal: web `https://platform.digitalbdg.ac.id` dan bot
+    WhatsApp. Dokumen ini adalah sumber kebenaran rute dan skema; setiap rute di
+    `apkflydev/url/` wajib ada di sini (nol selisih dua arah). Commit backend yang
+    sedang berjalan: `GET /api/version` (field `commit`).
 
+    Rute di bawah `servers` (`/api`), kecuali `/health` di akar. Pedoman proyek,
+    peran, dan konvensi klien web (crootjs) ada di README repo `pdb`; ringkasan
+    untuk agen AI/developer ada di [`SKILL.md`](./SKILL.md).
 
-    Catatan: dua route websocket di backend (`/ws/whatsauth/public` untuk QR auth,
-    `/ws/chatgpl/public` untuk chatGPL) tidak didokumentasikan di sini karena
-    OpenAPI 3.0 tidak punya skema native untuk websocket.
-  termsOfService: https://wa.my.id
+    ## Cara mendapatkan token
+
+    Tidak ada login/password dan tidak ada pendaftaran mandiri. Identitas adalah
+    nomor WhatsApp, dibuktikan lewat **WhatsAuth** di satu-satunya halaman login
+    `https://platform.digitalbdg.ac.id/login/`:
+
+    1. Halaman login membuka WebSocket `wss://apk.fly.dev/ws/whatsauth/public`,
+       mengirim `uuid` acak, lalu menampilkan QR / tombol Buka WhatsApp yang
+       berisi kata kunci WhatsAuth bot.
+    2. Pengguna mengirim pesan itu dari WhatsApp-nya; bot memanggil
+       `POST /whatsauth/request` (kanal bot, header `token`), backend mencari
+       peran nomor itu di basis data dan menerbitkan token PASETO v4.public
+       berisi `Id` (nomor WA), `Alias` (nama), dan `Data.role`
+       (mis. `["dosen","kaprodi"]`), berlaku **18 jam**.
+    3. Token dikirim balik lewat WebSocket sebagai `{"login": "<token>"}` dan
+       disimpan di cookie `login` (`path=/`). Klien web mengirimnya sebagai
+       `Authorization: Bearer <token>` pada setiap rute berskema `whatsauthToken`.
+
+    WebSocket hanya menerima `Origin` `https://platform.digitalbdg.ac.id`, jadi
+    klien non-web tidak bisa membuat sesi login sendiri; skrip/agen memakai token
+    yang diambil dari cookie `login` sesi peramban yang sah, atau token operator
+    dari `cmd/gentoken` (hanya untuk nomor bot). Rute WebSocket (pesan pertama,
+    bentuk balasan, magic link) didokumentasikan di `apkflydev/README.md` bagian
+    "Rute WebSocket", bukan di sini (OpenAPI 3.0 tidak memodelkan WebSocket).
+
+    ## Peran dan hak (ringkas)
+
+    | Peran | Ditentukan dari | Hak utama |
+    |---|---|---|
+    | mahasiswa | nomor ada di roster `mahasiswa` (tanpa klaim role) | materi, kuis, tugas, forum, nilai, rapor, dasbor, proyek kerja, RPL — hanya prodi rosternya |
+    | dosen | `dosentugas` aktif → role `dosen` | membaca semua prodi; roster & email kampus; tinjau RPL, rapor per NIM, pengawas ujian, proyek blok, proyek kerja bimbingan |
+    | dosen pengampu | `dosentugas.prodi_kode` dicentang kaprodi | + menyusun kuis, mengelola materi, membuat tugas, menerbitkan rekaman **untuk prodi itu** |
+    | kaprodi | `prodi.kaprodi_email` → role `kaprodi` | + kurikulum, kalender semester, centang pengampu, laporan tingkat prodi **prodinya** |
+    | admin | `dosentugas.jabatan = "admin"` → role `admin` | menetapkan kaprodi, membuat prodi baru, laporan semua prodi; **tidak** mengubah kurikulum/kalender/kuis/materi/tugas |
+
+    Tanpa token → `401`; nomor tidak terdaftar atau peran kurang → `403`;
+    dokumen tidak ada → `404`; isian tidak sah → `422`. Hak dibaca dari basis
+    data tiap permintaan (pergantian kaprodi berlaku seketika), kecuali klaim
+    `role` di token yang baru berubah setelah masuk ulang.
+
+    ## Bentuk galat
+
+    Rute platform membalas `{"detail": "<pesan untuk pengguna>"}` (skema
+    `DetailError`) dengan kode 401/403/404/422/5xx. Rute bot WhatsApp warisan
+    (`botregister`, `device`, `send/message/*`, `numbers/isonwa`,
+    `whatsauth/request`) membalas `{"error": "..."}` (skema `ErrorMessage`) dan
+    memakai header `token`, bukan Bearer.
+
+    ## Batas dan format
+
+    - Badan permintaan maksimal **24 MiB** (Fiber `BodyLimit`); berkas PDF materi
+      maksimal **20 MiB**; kiriman tugas dan bukti RPL ikut batas 24 MiB.
+    - Unggah berkas memakai `multipart/form-data` dengan satu field berkas; field
+      teks dikirim lewat query string. Berkas dibaca balik sebagai base64 di JSON.
+    - Berkas disimpan di repo GitHub privat; basis data hanya menyimpan
+      `StorageRef` (`repo`/`path`/`sha`). Nama berkas disanitasi server.
+    - Kode prodi huruf kecil `[a-z][a-z0-9-]{1,19}`; yang berlaku dari
+      `GET /kurikulum/prodi` (jangan dihardcode selain contoh).
+    - Waktu dalam WIB (Asia/Jakarta); tanggal sesi kalender `YYYY-MM-DD`.
+
+    ## Urutan pemakaian tipikal
+
+    - **Menyiapkan prodi (kaprodi):** `PUT /kurikulum/prodi/{prodi}` → rumpun/CPL
+      → `PUT /kurikulum/ritme/{nama}` → `POST /kalender` → `PUT /kalender/{id}`
+      → `POST /kalender/{id}/terbitkan` → `PUT /jabatan/dosen/{email}/prodi`
+      (centang pengampu).
+    - **Tugas (dosen pengampu → mahasiswa):** `POST /tugas` (wajib `prodi_kode`)
+      → `GET /tugas` → `POST /tugas/{id}/kirim` (multipart, mahasiswa roster)
+      → `GET /tugas/{id}/laporan` (kemiripan).
+    - **Materi & kuis mingguan:** `POST /materi` (+ `POST /materi/{id}/berkas`)
+      → mahasiswa `GET /materi?rumpun=&minggu=` → `POST /progresmateri`;
+      `POST /kuisgerbang` → `GET /kuisgerbang/{rumpun}/{minggu}` →
+      `POST /kuisgerbang/{id}/submit` → `GET /mahasiswa/{nim}/kuisgerbang/status`.
+    - **Autograder:** GitHub Actions (`pull_request_target`, binari repo
+      `telemetri`) → `POST /autograder/webhook` (HMAC `X-Hub-Signature-256`,
+      event `workflow_run`; 202 diabaikan, 401 tanda tangan salah, 503 secret
+      belum diset) → backend mengambil artefak dengan `GHPAT` → `GET /autograder`.
+      Rincian: `apkflydev/README.md` bagian "Modul Autograder" dan
+      `telemetri/README.md`.
+
+    Contoh (token dari cookie `login` peramban yang sudah masuk):
+
+    ```
+    curl -s https://apk.fly.dev/api/version
+    curl -s -H "Authorization: Bearer $TOKEN" https://apk.fly.dev/api/kurikulum/prodi
+    curl -s -H "Authorization: Bearer $TOKEN" "https://apk.fly.dev/api/tugas?prodi=trpl"
+    curl -s -H "Authorization: Bearer $TOKEN" -F berkas=@jawaban.pdf \
+      "https://apk.fly.dev/api/tugas/<id>/kirim"
+    ```
+
+    ## Versi
+
+    `info.version` naik setiap kali rute/skema berubah; tanggal dan commit
+    backend padanannya dicatat di README repo `apidocs`. Rute WebSocket
+    `/ws/whatsauth/public` (login) dan `/ws/chatgpl/public` aktif;
+    `/ws/webrtc/public` dinonaktifkan.
+  termsOfService: https://platform.digitalbdg.ac.id/
   contact:
+    name: Platform Digital Bandung
+    url: https://github.com/platformdigitalbandung/apkflydev
     email: awangga@gmail.com
   license:
-    name: Buat dulu webhook untuk menerima dan mengirim pesan
-    url: https://github.com/whatsauth/webhook
-  version: 1.1.0
+    name: MIT
+    url: https://github.com/platformdigitalbandung/apidocs/blob/main/LICENSE
+  version: 1.2.0
 externalDocs:
-  description: Pendaftaran Token Whatsauth
-  url: https://wa.my.id
+  description: Pedoman proyek, peran, dan konvensi klien (README repo pdb)
+  url: https://github.com/platformdigitalbandung/pdb#readme
 servers:
   - url: https://apk.fly.dev/api
 tags:
@@ -106,7 +208,7 @@ paths:
     get:
       tags:
         - tugas
-      summary: Health check Portal Tugas
+      summary: Health check Portal Tugas (publik, tanpa token)
       description: >-
         Mengembalikan status service dan jumlah tugas yang tersimpan.
         Alamat lengkapnya `https://apk.fly.dev/health` - TANPA prefix `/api`.
@@ -137,7 +239,7 @@ paths:
         dan admin menerima semua tugas, bisa disaring dengan query prodi.
       operationId: daftarTugas
       security:
-        - dosenToken: []
+        - whatsauthToken: []
       parameters:
         - in: query
           name: prodi
@@ -218,7 +320,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /tugas/{id}:
     get:
       tags:
@@ -229,7 +331,7 @@ paths:
         lain atau tugas lama tanpa prodi dijawab 404.
       operationId: detailTugas
       security:
-        - dosenToken: []
+        - whatsauthToken: []
       parameters:
         - in: path
           name: id
@@ -279,7 +381,7 @@ paths:
       description: Hanya mahasiswa di roster. Nama dan NIM kiriman diambil dari roster lewat nomor WhatsApp di token, bukan dari isian form. Body berupa multipart/form-data berisi berkas.
       operationId: kirimTugas
       security:
-        - dosenToken: []
+        - whatsauthToken: []
       parameters:
         - in: path
           name: id
@@ -368,7 +470,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /dosen/ping:
     get:
       tags:
@@ -396,7 +498,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /kurikulum/prodi:
     get:
       tags:
@@ -405,7 +507,7 @@ paths:
       description: Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster).
       operationId: daftarProdi
       security:
-        - dosenToken: []
+        - whatsauthToken: []
       responses:
         '401':
           description: Tanpa token, atau token tidak valid/kedaluwarsa
@@ -476,7 +578,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /kurikulum/prodi/{prodi}/kaprodi:
     put:
       tags:
@@ -492,7 +594,7 @@ paths:
         dikenali dari peran admin di token atau jabatan admin di data dosen.
       operationId: tetapkanKaprodi
       parameters:
-        - {name: prodi, in: path, required: true, schema: {type: string}, example: trpl}
+        - {name: prodi, in: path, required: true, schema: {type: string}, example: trpl, description: "Kode program studi (huruf kecil), mis. `trpl`, `bisdig`, `pai`, `hes`; daftar dari `GET /kurikulum/prodi`."}
       requestBody:
         required: true
         content:
@@ -504,6 +606,10 @@ paths:
       responses:
         '200':
           description: prodi setelah kaprodi ditetapkan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prodi'
         '401':
           description: Token WhatsAuth tidak sah
           content:
@@ -523,7 +629,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /kurikulum/prodi/{prodi}/rumpun:
     get:
       tags:
@@ -532,7 +638,7 @@ paths:
       description: Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster).
       operationId: daftarRumpun
       security:
-        - dosenToken: []
+        - whatsauthToken: []
       parameters:
         - in: path
           name: prodi
@@ -635,7 +741,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /kurikulum/prodi/{prodi}/cpl:
     get:
       tags:
@@ -644,7 +750,7 @@ paths:
       description: Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster). Termasuk penguatan_usulan dan penopang_lain.
       operationId: daftarCPL
       security:
-        - dosenToken: []
+        - whatsauthToken: []
       parameters:
         - {in: path, name: prodi, required: true, schema: {type: string}, description: Kode/slug program studi}
       responses:
@@ -728,7 +834,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /kurikulum/ritme:
     get:
       tags:
@@ -740,7 +846,7 @@ paths:
         Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster).
       operationId: daftarRitme
       security:
-        - dosenToken: []
+        - whatsauthToken: []
       responses:
         '401':
           description: Tanpa token, atau token tidak valid/kedaluwarsa
@@ -812,7 +918,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /kurikulum/prodi/{prodi}/matakuliah:
     get:
       tags:
@@ -826,7 +932,7 @@ paths:
         terdaftar (dosen/admin atau mahasiswa di roster).
       operationId: daftarMataKuliah
       security:
-        - dosenToken: []
+        - whatsauthToken: []
       parameters:
         - in: path
           name: prodi
@@ -903,7 +1009,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
     post:
       tags:
         - kurikulum
@@ -962,7 +1068,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /kalender:
     get:
       tags:
@@ -971,21 +1077,24 @@ paths:
       description: Mengembalikan kalender yang sudah diterbitkan, hanya untuk pengguna terdaftar (dosen/admin atau mahasiswa di roster). Filter prodi, angkatan, dan semester opsional. Dosen yang menyertakan token WhatsAuth dan draft=1 ikut menerima kalender yang masih draft.
       operationId: daftarKalender
       security:
-        - dosenToken: []
+        - whatsauthToken: []
       parameters:
         - in: query
+          description: Kode program studi (huruf kecil), mis. `trpl`, `bisdig`, `pai`, `hes`. Daftar yang berlaku dari `GET /kurikulum/prodi`.
           name: prodi
           schema:
             type: string
           required: false
           example: trpl
         - in: query
+          description: Tahun angkatan, mis. `2026`.
           name: angkatan
           schema:
             type: string
           required: false
           example: "2026"
         - in: query
+          description: Nomor semester 1–8.
           name: semester
           schema:
             type: integer
@@ -1059,7 +1168,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /kalender/{id}:
     delete:
       tags:
@@ -1069,6 +1178,7 @@ paths:
       operationId: hapusKalender
       parameters:
         - in: path
+          description: Id kalender semester (ObjectID 24 heksadesimal) dari `GET /kalender`.
           name: id
           required: true
           schema:
@@ -1120,7 +1230,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
     put:
       tags:
         - kalender
@@ -1129,6 +1239,7 @@ paths:
       operationId: gantiSesiKalender
       parameters:
         - in: path
+          description: Id kalender semester (ObjectID 24 heksadesimal) dari `GET /kalender`.
           name: id
           required: true
           schema:
@@ -1176,7 +1287,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /kalender/{id}/terbitkan:
     post:
       tags:
@@ -1186,6 +1297,7 @@ paths:
       operationId: terbitkanKalender
       parameters:
         - in: path
+          description: Id kalender semester (ObjectID 24 heksadesimal) dari `GET /kalender`.
           name: id
           required: true
           schema:
@@ -1217,7 +1329,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /dosen/email:
     put:
       tags:
@@ -1270,7 +1382,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /mahasiswa:
     post:
       tags:
@@ -1303,7 +1415,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
     get:
       tags:
         - akademik
@@ -1312,12 +1424,14 @@ paths:
       operationId: daftarMahasiswa
       parameters:
         - in: query
+          description: Kode program studi (huruf kecil), mis. `trpl`, `bisdig`, `pai`, `hes`. Daftar yang berlaku dari `GET /kurikulum/prodi`.
           name: prodi
           schema:
             type: string
           required: false
           example: trpl
         - in: query
+          description: Tahun angkatan, mis. `2026`.
           name: angkatan
           schema:
             type: string
@@ -1342,7 +1456,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /mahasiswa/{nim}:
     delete:
       tags:
@@ -1361,6 +1475,7 @@ paths:
       operationId: hapusMahasiswa
       parameters:
         - in: path
+          description: NIM mahasiswa di roster `mahasiswa`.
           name: nim
           schema:
             type: string
@@ -1409,7 +1524,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /proyekkerja/dasbor:
     get:
       tags:
@@ -1427,6 +1542,7 @@ paths:
       operationId: dasborProyekKerja
       parameters:
         - in: query
+          description: Kode program studi (huruf kecil), mis. `trpl`, `bisdig`, `pai`, `hes`. Daftar yang berlaku dari `GET /kurikulum/prodi`.
           name: prodi
           schema:
             type: string
@@ -1440,6 +1556,7 @@ paths:
           description: Hanya menentukan kalender acuan titik tengah
           example: "2026"
         - in: query
+          description: Nomor semester 1–8.
           name: semester
           schema:
             type: integer
@@ -1471,7 +1588,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /proyekkerja:
     post:
       tags:
@@ -1504,7 +1621,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /proyekkerja/saya:
     get:
       tags:
@@ -1541,7 +1658,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /proyekkerja/tinjauan-atasan:
     get:
       tags:
@@ -1628,6 +1745,7 @@ paths:
       operationId: tautanTinjauanProyekKerja
       parameters:
         - in: path
+          description: Id proyek kerja (ObjectID) dari `GET /proyekkerja/saya` atau dasbor.
           name: id
           required: true
           schema:
@@ -1665,7 +1783,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /proyekkerja/{id}:
     delete:
       tags:
@@ -1675,6 +1793,7 @@ paths:
       operationId: hapusProyekKerja
       parameters:
         - in: path
+          description: Id proyek kerja (ObjectID) dari `GET /proyekkerja/saya` atau dasbor.
           name: id
           required: true
           schema:
@@ -1726,7 +1845,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
     get:
       tags:
         - proyekkerja
@@ -1735,6 +1854,7 @@ paths:
       operationId: detailProyekKerja
       parameters:
         - in: path
+          description: Id proyek kerja (ObjectID) dari `GET /proyekkerja/saya` atau dasbor.
           name: id
           required: true
           schema:
@@ -1777,7 +1897,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /proyekkerja/{id}/putusan:
     post:
       tags:
@@ -1787,6 +1907,7 @@ paths:
       operationId: putusanProyekKerja
       parameters:
         - in: path
+          description: Id proyek kerja (ObjectID) dari `GET /proyekkerja/saya` atau dasbor.
           name: id
           required: true
           schema:
@@ -1823,7 +1944,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /proyekkerja/{id}/tinjauan:
     post:
       tags:
@@ -1833,6 +1954,7 @@ paths:
       operationId: tinjauanProyekKerja
       parameters:
         - in: path
+          description: Id proyek kerja (ObjectID) dari `GET /proyekkerja/saya` atau dasbor.
           name: id
           required: true
           schema:
@@ -1874,7 +1996,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /dasbor/beban-belajar/{nim}:
     get:
       tags:
@@ -1896,6 +2018,7 @@ paths:
       operationId: bebanBelajarMahasiswa
       parameters:
         - name: nim
+          description: NIM mahasiswa di roster `mahasiswa`.
           in: path
           required: true
           schema:
@@ -1933,7 +2056,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /kuisgerbang:
     get:
       tags:
@@ -1944,8 +2067,8 @@ paths:
         ini memuat `indeks_benar` dan jumlah mahasiswa yang sudah mengerjakan.
       operationId: daftarKuisGerbang
       parameters:
-        - {in: query, name: prodi, required: false, schema: {type: string}, example: pai}
-        - {in: query, name: rumpun, required: false, schema: {type: string}, example: R1}
+        - {in: query, name: prodi, required: false, schema: {type: string}, example: pai, description: "Kode program studi (huruf kecil), mis. `trpl`, `bisdig`, `pai`, `hes`; daftar dari `GET /kurikulum/prodi`."}
+        - {in: query, name: rumpun, required: false, schema: {type: string}, example: R1, description: "Kode rumpun (blok mata kuliah), mis. `R1`."}
       responses:
         '200':
           description: Daftar kuis, urut prodi, rumpun, minggu
@@ -1971,7 +2094,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
     post:
       tags:
         - kuisgerbang
@@ -2015,7 +2138,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /kuisgerbang/{id}:
     delete:
       tags:
@@ -2027,10 +2150,16 @@ paths:
       operationId: hapusKuisGerbang
       parameters:
         - {in: path, name: id, required: true, schema: {type: string}, description: ObjectID kuis}
-        - {in: query, name: konfirmasi, required: false, schema: {type: string, enum: [hapus]}}
+        - {in: query, name: konfirmasi, required: false, schema: {type: string, enum: [hapus]}, description: "Wajib `hapus` bila kuis sudah dikerjakan mahasiswa; tanpa itu dijawab 422."}
       responses:
         '200':
           description: Terhapus
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean, example: true}
         '401':
           description: Tanpa token, atau token tidak valid/kedaluwarsa
           content:
@@ -2056,7 +2185,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /kuisgerbang/{id}/submit:
     post:
       tags:
@@ -2119,7 +2248,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /kuisgerbang/{rumpun}/{minggu}:
     get:
       tags:
@@ -2133,11 +2262,13 @@ paths:
       parameters:
         - {in: query, name: prodi, required: false, schema: {type: string}, description: Wajib untuk dosen/admin}
         - in: path
+          description: Kode rumpun (blok mata kuliah), mis. `R1`; daftar dari `GET /kurikulum/prodi/{prodi}/rumpun`.
           name: rumpun
           schema:
             type: string
           required: true
         - in: path
+          description: Nomor minggu perkuliahan (1–16) menurut kalender semester yang terbit.
           name: minggu
           schema:
             type: integer
@@ -2168,7 +2299,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /mahasiswa/{nim}/kuisgerbang/status:
     get:
       tags:
@@ -2180,6 +2311,7 @@ paths:
       operationId: statusKuisMahasiswa
       parameters:
         - in: path
+          description: NIM mahasiswa di roster `mahasiswa`.
           name: nim
           schema:
             type: string
@@ -2211,7 +2343,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /sesiujian:
     get:
       tags:
@@ -2226,6 +2358,7 @@ paths:
       operationId: daftarSesiUjian
       parameters:
         - in: query
+          description: Kode rumpun (blok mata kuliah), mis. `R1`; daftar dari `GET /kurikulum/prodi/{prodi}/rumpun`.
           name: rumpun
           schema:
             type: string
@@ -2269,7 +2402,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
     post:
       tags:
         - sesiujian
@@ -2310,7 +2443,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /sesiujian/{id}/checkin:
     post:
       tags:
@@ -2322,6 +2455,7 @@ paths:
       operationId: checkinSesiUjian
       parameters:
         - in: path
+          description: Id sesi ujian (ObjectID) dari `GET /sesiujian`.
           name: id
           schema:
             type: string
@@ -2370,7 +2504,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /sesiujian/{id}/kehadiran:
     get:
       tags:
@@ -2380,6 +2514,7 @@ paths:
       operationId: kehadiranSesiUjian
       parameters:
         - in: path
+          description: Id sesi ujian (ObjectID) dari `GET /sesiujian`.
           name: id
           schema:
             type: string
@@ -2415,7 +2550,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /rpl:
     get:
       tags:
@@ -2470,7 +2605,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
     post:
       tags:
         - rpl
@@ -2529,7 +2664,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /rpl/{id}/tinjau:
     post:
       tags:
@@ -2542,6 +2677,7 @@ paths:
       operationId: tinjauRPL
       parameters:
         - in: path
+          description: Id pengajuan RPL (ObjectID) dari `GET /rpl`.
           name: id
           schema:
             type: string
@@ -2596,7 +2732,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /materi:
     get:
       tags:
@@ -2612,12 +2748,14 @@ paths:
       operationId: daftarMateri
       parameters:
         - in: query
+          description: Saring per kode program studi, mis. `trpl` (mahasiswa otomatis prodi rosternya).
           name: prodi
           schema:
             type: string
           required: false
           example: trpl
         - in: query
+          description: Kode rumpun (blok mata kuliah), mis. `R1`; daftar dari `GET /kurikulum/prodi/{prodi}/rumpun`.
           name: rumpun
           schema:
             type: string
@@ -2661,7 +2799,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
     post:
       tags:
         - materi
@@ -2708,12 +2846,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /materi/{id}:
     put:
       tags:
         - materi
-      summary: Perbarui satu materi
+      summary: Perbarui satu materi (dosen pengampu prodi materi itu / kaprodinya)
       description: >-
         Mengganti seluruh isi materi; pembuat aslinya dipertahankan. Berkas PDF
         yang sudah diunggah ikut terbawa selama jenisnya tetap `berkas` - body
@@ -2722,6 +2860,7 @@ paths:
       operationId: perbaruiMateri
       parameters:
         - name: id
+          description: Id materi (ObjectID) dari `GET /materi`.
           in: path
           required: true
           schema:
@@ -2763,7 +2902,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
     delete:
       tags:
         - materi
@@ -2776,11 +2915,13 @@ paths:
       operationId: hapusMateri
       parameters:
         - name: id
+          description: Id materi (ObjectID) dari `GET /materi`.
           in: path
           required: true
           schema:
             type: string
         - in: query
+          description: Nilai konfirmasi sesuai enum; wajib bila dokumen sudah dipakai atau sudah terbit, tanpa itu dijawab 422.
           name: konfirmasi
           schema:
             type: string
@@ -2826,7 +2967,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /materi/{id}/berkas:
     post:
       tags:
@@ -2847,6 +2988,7 @@ paths:
       operationId: unggahBerkasMateri
       parameters:
         - name: id
+          description: Id materi (ObjectID) dari `GET /materi`.
           in: path
           required: true
           schema:
@@ -2913,7 +3055,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
     get:
       tags:
         - materi
@@ -2928,6 +3070,7 @@ paths:
       operationId: ambilBerkasMateri
       parameters:
         - name: id
+          description: Id materi (ObjectID) dari `GET /materi`.
           in: path
           required: true
           schema:
@@ -2964,7 +3107,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /progresmateri:
     post:
       tags:
@@ -3019,7 +3162,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /mahasiswa/{nim}/progres:
     get:
       tags:
@@ -3029,6 +3172,7 @@ paths:
       operationId: progresMahasiswa
       parameters:
         - name: nim
+          description: NIM mahasiswa di roster `mahasiswa`.
           in: path
           required: true
           schema:
@@ -3076,7 +3220,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /mahasiswa/{nim}/rpl:
     get:
       tags:
@@ -3086,6 +3230,7 @@ paths:
       operationId: riwayatRPL
       parameters:
         - in: path
+          description: NIM mahasiswa di roster `mahasiswa`.
           name: nim
           schema:
             type: string
@@ -3123,7 +3268,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /dasbor/cpl/{nim}:
     get:
       tags:
@@ -3137,6 +3282,7 @@ paths:
       operationId: cakupanCPLMahasiswa
       parameters:
         - name: nim
+          description: NIM mahasiswa di roster `mahasiswa`.
           in: path
           required: true
           schema:
@@ -3177,7 +3323,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /dasbor/prodi/{kode}/cpl:
     get:
       tags:
@@ -3191,9 +3337,10 @@ paths:
         mahasiswa di roster).
       operationId: cakupanCPLProdi
       security:
-        - dosenToken: []
+        - whatsauthToken: []
       parameters:
         - name: kode
+          description: Kode program studi, mis. `bisdig`.
           in: path
           required: true
           schema:
@@ -3242,7 +3389,7 @@ paths:
     get:
       tags:
         - kepatuhan
-      summary: Laporan kepatuhan satu kalender semester
+      summary: Laporan kepatuhan satu kalender semester (kaprodi prodinya / admin)
       description: >-
         Laporan untuk akreditasi dari kalender semester yang SUDAH TERBIT: menit
         per moda per minggu dan per mata kuliah terhadap target SKS x 85 menit
@@ -3260,18 +3407,21 @@ paths:
       operationId: laporanKepatuhanSemester
       parameters:
         - name: prodi
+          description: Kode program studi (huruf kecil), mis. `trpl`, `bisdig`, `pai`, `hes`. Daftar yang berlaku dari `GET /kurikulum/prodi`.
           in: path
           required: true
           schema:
             type: string
           example: trpl
         - name: angkatan
+          description: Tahun angkatan, mis. `2026`.
           in: path
           required: true
           schema:
             type: string
           example: "2026"
         - name: semester
+          description: Nomor semester 1–8.
           in: path
           required: true
           schema:
@@ -3317,12 +3467,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /kepatuhan/matakuliah/{prodi}/{kode}:
     get:
       tags:
         - kepatuhan
-      summary: Rekap kepatuhan satu mata kuliah lintas angkatan
+      summary: Rekap kepatuhan satu mata kuliah lintas angkatan (kaprodi prodinya / admin)
       description: >-
         Baris laporan kepatuhan satu mata kuliah pada setiap angkatan yang
         kalender semesternya (semester mata kuliah itu) sudah terbit. Perhitungan
@@ -3330,6 +3480,7 @@ paths:
       operationId: rekapKepatuhanMataKuliah
       parameters:
         - name: prodi
+          description: Kode program studi (huruf kecil), mis. `trpl`, `bisdig`, `pai`, `hes`. Daftar yang berlaku dari `GET /kurikulum/prodi`.
           in: path
           required: true
           schema:
@@ -3378,7 +3529,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /autograder/webhook:
     post:
       tags:
@@ -3396,8 +3547,8 @@ paths:
       operationId: webhookAutograder
       security: []
       parameters:
-        - {name: X-Hub-Signature-256, in: header, required: true, schema: {type: string}, example: "sha256=5c..."}
-        - {name: X-GitHub-Event, in: header, required: true, schema: {type: string, enum: [workflow_run, ping]}}
+        - {name: X-Hub-Signature-256, in: header, required: true, schema: {type: string}, example: "sha256=5c...", description: "HMAC-SHA256 badan permintaan mentah dengan `GHWEBHOOKSECRET`, format `sha256=<hex>`; salah atau kosong dijawab 401."}
+        - {name: X-GitHub-Event, in: header, required: true, schema: {type: string, enum: [workflow_run, ping]}, description: "`ping` dibalas pong, `workflow_run` diproses, lainnya dijawab 202 dan diabaikan."}
       requestBody:
         required: true
         content:
@@ -3464,8 +3615,8 @@ paths:
         dikirim supaya angkanya bisa diterangkan.
       operationId: daftarAutograder
       parameters:
-        - {name: nim, in: query, required: false, schema: {type: string}}
-        - {name: repo, in: query, required: false, schema: {type: string}, example: platformdigitalbandung/autograder-contoh}
+        - {name: nim, in: query, required: false, schema: {type: string}, description: "Saring NIM (dosen/admin; mahasiswa hanya miliknya sendiri)."}
+        - {name: repo, in: query, required: false, schema: {type: string}, example: platformdigitalbandung/autograder-contoh, description: "Saring nama repositori GitHub tugas, mis. `platformdigitalbandung/tugas-x`."}
       responses:
         '200':
           description: successful operation
@@ -3493,7 +3644,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /autograder/bobot:
     get:
       tags:
@@ -3518,7 +3669,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
     put:
       tags:
         - autograder
@@ -3562,7 +3713,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /rekaman:
     post:
       tags:
@@ -3615,7 +3766,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /rekaman/rekap:
     get:
       tags:
@@ -3628,9 +3779,9 @@ paths:
         Tanpa notifikasi otomatis. Didaftarkan sebelum /rekaman/kalender/{id}.
       operationId: rekapRekaman
       parameters:
-        - {name: prodi, in: query, required: false, schema: {type: string}, example: trpl}
-        - {name: angkatan, in: query, required: false, schema: {type: string}, example: "2026"}
-        - {name: semester, in: query, required: false, schema: {type: integer}, example: 1}
+        - {name: prodi, in: query, required: false, schema: {type: string}, example: trpl, description: "Kode program studi (huruf kecil), mis. `trpl`, `bisdig`, `pai`, `hes`; daftar dari `GET /kurikulum/prodi`."}
+        - {name: angkatan, in: query, required: false, schema: {type: string}, example: "2026", description: "Tahun angkatan, mis. `2026`."}
+        - {name: semester, in: query, required: false, schema: {type: integer}, example: 1, description: "Nomor semester 1–8."}
       responses:
         '200':
           description: successful operation
@@ -3657,15 +3808,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /rekaman/kalender/{id}:
     get:
       tags:
         - rekaman
-      summary: Sesi daring sinkron satu kalender beserta rekamannya
+      summary: Sesi daring sinkron satu kalender beserta rekamannya (semua pengguna terdaftar)
       operationId: daftarRekamanKalender
       parameters:
-        - {name: id, in: path, required: true, schema: {type: string}, example: 6aa548104ec888f562f2f2dc}
+        - {name: id, in: path, required: true, schema: {type: string}, example: 6aa548104ec888f562f2f2dc, description: "Id kalender semester (ObjectID) yang sesinya direkam."}
       responses:
         '200':
           description: successful operation
@@ -3686,7 +3837,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /rekaman/{id}:
     delete:
       tags:
@@ -3695,7 +3846,7 @@ paths:
       description: Aturannya sama dengan menerbitkan - dosen pengampu prodi kalender rekaman itu atau kaprodinya.
       operationId: hapusRekaman
       parameters:
-        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: id, in: path, required: true, schema: {type: string}, description: "Id rekaman (ObjectID) dari `GET /rekaman/kalender/{id}`."}
       responses:
         '200':
           description: terhapus
@@ -3725,7 +3876,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /rapor/prodi/{prodi}/{angkatan}/{semester}:
     get:
       tags:
@@ -3738,9 +3889,9 @@ paths:
         Didaftarkan sebelum /rapor/{nim}.
       operationId: rekapRaporSemester
       parameters:
-        - {name: prodi, in: path, required: true, schema: {type: string}, example: trpl}
-        - {name: angkatan, in: path, required: true, schema: {type: string}, example: "2026"}
-        - {name: semester, in: path, required: true, schema: {type: integer, minimum: 1}, example: 1}
+        - {name: prodi, in: path, required: true, schema: {type: string}, example: trpl, description: "Kode program studi (huruf kecil), mis. `trpl`, `bisdig`, `pai`, `hes`; daftar dari `GET /kurikulum/prodi`."}
+        - {name: angkatan, in: path, required: true, schema: {type: string}, example: "2026", description: "Tahun angkatan, mis. `2026`."}
+        - {name: semester, in: path, required: true, schema: {type: integer, minimum: 1}, example: 1, description: "Nomor semester 1–8."}
       responses:
         '200':
           description: successful operation
@@ -3773,7 +3924,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /rapor/{nim}:
     get:
       tags:
@@ -3789,7 +3940,7 @@ paths:
         Mahasiswa hanya boleh melihat rapornya sendiri; dosen/admin siapa pun.
       operationId: raporMahasiswa
       parameters:
-        - {name: nim, in: path, required: true, schema: {type: string}, example: 2026TRPL001}
+        - {name: nim, in: path, required: true, schema: {type: string}, example: 2026TRPL001, description: "NIM mahasiswa di roster `mahasiswa`."}
       responses:
         '200':
           description: successful operation
@@ -3816,7 +3967,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /beranda/agenda:
     get:
       tags:
@@ -3876,7 +4027,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /jabatan/dosen:
     get:
       tags:
@@ -3915,7 +4066,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /jabatan/dosen/{email}/prodi:
     put:
       tags:
@@ -3967,7 +4118,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /forum:
     post:
       tags:
@@ -4013,18 +4164,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
     get:
       tags:
         - forum
-      summary: Daftar pertanyaan forum
+      summary: Daftar pertanyaan forum (semua pengguna terdaftar; mahasiswa hanya prodinya)
       description: Terbaru dulu, maksimal 200. Siapa pun dengan token WhatsAuth sah.
       operationId: daftarForum
       parameters:
-        - {name: prodi, in: query, required: false, schema: {type: string}, example: trpl}
-        - {name: rumpun, in: query, required: false, schema: {type: string}, example: R1}
-        - {name: minggu, in: query, required: false, schema: {type: integer}, example: 3}
-        - {name: status, in: query, required: false, schema: {type: string, enum: [terbuka, dijawab, ditutup]}}
+        - {name: prodi, in: query, required: false, schema: {type: string}, example: trpl, description: "Kode program studi (huruf kecil), mis. `trpl`, `bisdig`, `pai`, `hes`; daftar dari `GET /kurikulum/prodi`."}
+        - {name: rumpun, in: query, required: false, schema: {type: string}, example: R1, description: "Kode rumpun (blok mata kuliah), mis. `R1`."}
+        - {name: minggu, in: query, required: false, schema: {type: integer}, example: 3, description: "Nomor minggu perkuliahan (1–16) menurut kalender terbit."}
+        - {name: status, in: query, required: false, schema: {type: string, enum: [terbuka, dijawab, ditutup]}, description: "Saring status utas — `terbuka`, `dijawab`, atau `ditutup`; kosong berarti semua."}
       responses:
         '200':
           description: successful operation
@@ -4050,7 +4201,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /forum/sla:
     get:
       tags:
@@ -4064,7 +4215,7 @@ paths:
         Didaftarkan sebelum /forum/{id}.
       operationId: slaForum
       parameters:
-        - {name: prodi, in: query, required: false, schema: {type: string}, example: trpl}
+        - {name: prodi, in: query, required: false, schema: {type: string}, example: trpl, description: "Kode program studi (huruf kecil), mis. `trpl`, `bisdig`, `pai`, `hes`; daftar dari `GET /kurikulum/prodi`."}
       responses:
         '200':
           description: successful operation
@@ -4091,15 +4242,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /forum/{id}:
     get:
       tags:
         - forum
-      summary: Pertanyaan forum beserta seluruh balasannya
+      summary: Pertanyaan forum beserta seluruh balasannya (semua pengguna terdaftar)
       operationId: detailForum
       parameters:
         - name: id
+          description: Id utas forum (ObjectID) dari `GET /forum`.
           in: path
           required: true
           schema:
@@ -4125,7 +4277,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /forum/{id}/balas:
     post:
       tags:
@@ -4140,6 +4292,7 @@ paths:
       operationId: balasForum
       parameters:
         - name: id
+          description: Id utas forum (ObjectID) dari `GET /forum`.
           in: path
           required: true
           schema:
@@ -4188,15 +4341,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /forum/{id}/tutup:
     post:
       tags:
         - forum
-      summary: Menutup pertanyaan forum
+      summary: Menutup pertanyaan forum (dosen aktif)
       operationId: tutupForum
       parameters:
         - name: id
+          description: Id utas forum (ObjectID) dari `GET /forum`.
           in: path
           required: true
           schema:
@@ -4228,12 +4382,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /proyekblok:
     get:
       tags:
         - proyekblok
-      summary: Daftar proyek blok
+      summary: Daftar proyek blok (dosen/admin semua; mahasiswa hanya proyek yang diikuti)
       description: Siapa pun yang memegang token WhatsAuth yang masih berlaku boleh melihat daftar proyek blok. Token dikirim lewat header Authorization berisi "Bearer <token>". Filter prodi dan angkatan opsional - kalau keduanya dikosongkan seluruh proyek dikembalikan.
       operationId: daftarProyekBlok
       parameters:
@@ -4270,7 +4424,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
     post:
       tags:
         - proyekblok
@@ -4308,7 +4462,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /proyekblok/saya:
     get:
       tags:
@@ -4330,7 +4484,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /proyekblok/{id}:
     get:
       tags:
@@ -4377,7 +4531,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /proyekblok/{id}/nilai:
     post:
       tags:
@@ -4446,7 +4600,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /mahasiswa/{nim}/nilai:
     get:
       tags:
@@ -4494,12 +4648,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security:
-        - dosenToken: []
+        - whatsauthToken: []
   /v3/official/send/message/text:
     post:
       tags:
         - message
-      summary: Kirim pesan teks (v3, nomor official)
+      summary: Kirim pesan teks (v3, nomor official) (bot, header `token`)
       description: Mengirimkan pesan teks memakai nomor official milik user yang sedang login (token di header, bukan di body)
       operationId: sendMessageTextV3
       requestBody:
@@ -4508,6 +4662,12 @@ paths:
             schema:
               $ref: '#/components/schemas/TextMessage'
       responses:
+        '401':
+          description: Header `token` kosong atau tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
         '200':
           description: successful operation
           content:
@@ -4528,7 +4688,7 @@ paths:
     get:
       tags:
         - version
-      summary: Cek status aplikasi
+      summary: Cek status aplikasi (publik, tanpa token)
       description: Mengembalikan status aplikasi dan git commit dari deployan yang sedang berjalan, dipakai untuk memastikan deployan berhasil tanpa perlu cek log server.
       operationId: getVersion
       responses:
@@ -4558,6 +4718,12 @@ paths:
             schema:
               $ref: '#/components/schemas/WebHook'
       responses:
+        '401':
+          description: Header `token` kosong atau tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
         '200':
           description: successful operation
           content:
@@ -4566,6 +4732,10 @@ paths:
                 $ref: '#/components/schemas/BotAccount'
         '405':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
       security:
         - token:
             - write:apiKey
@@ -4574,7 +4744,7 @@ paths:
     get:
       tags:
         - device
-      summary: Add device Whatsapp
+      summary: Add device Whatsapp (operator bot, token bootstrap `cmd/gentoken`)
       description: Menambahkan wa user ke server untuk dipakai oleh api dengan memasukkan code dari respon server
       operationId: getDevice
       parameters:
@@ -4593,11 +4763,15 @@ paths:
                 $ref: '#/components/schemas/DeviceResponse'
         '400':
           description: Invalid status value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
   /device/status/{token}:
     get:
       tags:
         - device
-      summary: Cek status pairing device
+      summary: Cek status pairing device (operator bot, token bootstrap `cmd/gentoken`)
       description: Cek status koneksi device WhatsApp — TIDAK memicu permintaan pair code baru (beda dari GET /device/{token}). Catatan — bukan benar-benar read-only, kalau client belum ada di memori server, endpoint ini tetap membuat koneksi baru di background. Berguna untuk troubleshoot tanpa perlu cek log server.
       operationId: getDeviceStatus
       parameters:
@@ -4629,6 +4803,10 @@ paths:
                     description: Sesi sudah lolos login penuh, siap kirim/terima pesan
         '403':
           description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
   /numbers/isonwa:
     post:
       tags:
@@ -4642,6 +4820,12 @@ paths:
             schema:
               $ref: '#/components/schemas/PhoneList'
       responses:
+        '401':
+          description: Header `token` kosong atau tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
         '200':
           description: successful operation
           content:
@@ -4650,6 +4834,10 @@ paths:
                 $ref: '#/components/schemas/WaList'
         '400':
           description: Invalid status value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
       security:
         - token:
             - write:apiKey
@@ -4658,7 +4846,7 @@ paths:
     post:
       tags:
         - message
-      summary: Kirim pesan teks
+      summary: Kirim pesan teks (bot, header `token`)
       description: Mengirimkan pesan teks kepada perorangan atau group
       operationId: sendMessageText
       requestBody:
@@ -4667,6 +4855,12 @@ paths:
             schema:
               $ref: '#/components/schemas/TextMessage'
       responses:
+        '401':
+          description: Header `token` kosong atau tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
         '200':
           description: successful operation
           content:
@@ -4687,7 +4881,7 @@ paths:
     post:
       tags:
         - message
-      summary: Kirim pesan gambar
+      summary: Kirim pesan gambar (bot, header `token`)
       description: Mengirimkan pesan gambar kepada perorangan atau group
       operationId: sendMessageImage
       requestBody:
@@ -4696,6 +4890,12 @@ paths:
             schema:
               $ref: '#/components/schemas/ImageMessage'
       responses:
+        '401':
+          description: Header `token` kosong atau tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
         '200':
           description: successful operation
           content:
@@ -4704,6 +4904,10 @@ paths:
                 $ref: '#/components/schemas/TextMessageResponse'
         '405':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
       security:
         - token:
             - write:apiKey
@@ -4712,7 +4916,7 @@ paths:
     post:
       tags:
         - message
-      summary: Kirim pesan document
+      summary: Kirim pesan document (bot, header `token`)
       description: Mengirimkan pesan document kepada perorangan atau group
       operationId: sendMessageDoc
       requestBody:
@@ -4721,6 +4925,12 @@ paths:
             schema:
               $ref: '#/components/schemas/DocumentMessage'
       responses:
+        '401':
+          description: Header `token` kosong atau tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
         '200':
           description: successful operation
           content:
@@ -4729,6 +4939,10 @@ paths:
                 $ref: '#/components/schemas/TextMessageResponse'
         '405':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
       security:
         - token:
             - write:apiKey
@@ -4737,7 +4951,7 @@ paths:
     post:
       tags:
         - whatsauth
-      summary: Permintaan otorisasi aplikasi
+      summary: Permintaan otorisasi aplikasi (bot/webhook, header `token`)
       description: Mengirimkan token otorisasi pada user
       operationId: whatsauthRequest
       requestBody:
@@ -4746,6 +4960,12 @@ paths:
             schema:
               $ref: '#/components/schemas/WhatsAuth'
       responses:
+        '401':
+          description: Header `token` kosong atau tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
         '200':
           description: successful operation
           content:
@@ -4754,6 +4974,10 @@ paths:
                 $ref: '#/components/schemas/TextMessageResponse'
         '405':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
       security:
         - token:
             - write:apiKey
@@ -5769,7 +5993,7 @@ components:
         rumpun_kode: {type: string, example: R1}
         minggu: {type: integer, example: 2}
         ambang_lulus: {type: number, example: 70, description: 0 berarti bawaan 60}
-        dibuat_oleh: {type: string, readOnly: true}
+        dibuat_oleh: {type: string, readOnly: true, description: Email kampus penyusun/penyunting terakhir, atau "wa:<nomor>" bila email kosong}
         dikerjakan: {type: integer, readOnly: true, description: Jumlah mahasiswa yang sudah mengerjakan}
         soal:
           type: array
@@ -6021,6 +6245,10 @@ components:
           items: {type: string}
         penguatan_usulan:
           type: array
+          items: {type: string}
+        penopang_lain:
+          type: array
+          description: Rumpun/mata kuliah lain yang menopang CPL ini di luar rumpun penyentuh utama
           items: {type: string}
     SesiHari:
       type: object
@@ -6604,6 +6832,10 @@ components:
         prodi_kode:
           type: string
           example: trpl
+        ritme_nama:
+          type: string
+          description: Nama ritme mingguan kurikulum yang dipakai; kosong berarti ritme bawaan
+          example: ritme-trpl-2026
         angkatan:
           type: string
           example: "2026"
@@ -6890,15 +7122,17 @@ components:
       type: apiKey
       name: token
       in: header
-    dosenToken:
+    whatsauthToken:
       type: http
       scheme: bearer
       bearerFormat: PASETO v4.public
       description: >-
-        Token PASETO WhatsAuth (keypair bersama PUBLICKEY/PRIVATEKEY) dari nomor
-        WhatsApp yang terdaftar sebagai dosen, didapat lewat alur POST
-        /whatsauth/request. Dikirim sebagai `Authorization: Bearer <token>` —
-        BUKAN header `token` seperti endpoint WhatsApp/device di atas. Dokumen
-        ini sebelumnya mendeklarasikannya sebagai apiKey header `token`, tidak
-        sesuai kode (`mod/portaltugas/auth.go`, `mod/proyekblok/auth.go`
-        keduanya membaca header Authorization).
+        Token PASETO WhatsAuth (satu keypair bersama PUBLICKEY/PRIVATEKEY untuk
+        seluruh backend) atas nama nomor WhatsApp pemegangnya — mahasiswa di
+        roster, dosen, kaprodi, maupun admin (dulu bernama `dosenToken`; peran
+        dibaca dari klaim `role`, bukan dari nama skema). Didapat hanya lewat
+        halaman login https://platform.digitalbdg.ac.id/login/ (WhatsAuth QR /
+        magic link; lihat "Cara mendapatkan token" di pengantar). Dikirim sebagai
+        `Authorization: Bearer <token>` — BUKAN header `token` seperti endpoint
+        bot WhatsApp/device. Berlaku 18 jam; perubahan peran baru terbaca setelah
+        masuk ulang.

@@ -1,4 +1,3 @@
-import {setSwagger,UIData} from './swaggerfunction.js';
+import { setSwagger } from './swaggerfunction.js';
 
-window.ui = UIData;
-window.onload = setSwagger;
+window.addEventListener('load', setSwagger);
