@@ -889,7 +889,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  prodi: {type: array, items: {type: string}, example: [trpl, bisdig]}
+                  prodi: {type: array, items: {type: string}, example: [trpl]}
         '401':
           description: Tanpa token, atau token tidak valid/kedaluwarsa
           content:
@@ -912,7 +912,7 @@ paths:
         Menulis data referensi kurikulum bawaan ke Mongo. Idempoten. Dengan query
         prodi, hanya prodi itu (data prodi, rumpun, CPL, mata kuliah turunannya;
         ritme tidak ikut) - untuk kaprodi prodi itu; data bawaan hanya ada untuk
-        trpl dan bisdig, prodi lain 404. Tanpa query prodi ditolak 422: seed
+        trpl (bisdig dicabut 2026-09-15), prodi lain 404. Tanpa query prodi ditolak 422: seed
         semua prodi sekaligus dicabut 2026-09-14. Rumpun dan CPL berkode sama
         yang diketik lewat web ditimpa.
       operationId: seedKurikulum
