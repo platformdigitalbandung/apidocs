@@ -1407,7 +1407,8 @@ paths:
       description: >-
         Sejak 2026-09-14 platform tidak memakai NIP: identitas dosen adalah email
         kampus, diisi dosen sendiri untuk nomornya sendiri (tidak ada jalur mengisi
-        email dosen lain). Wajib berdomain @digitalbdg.ac.id dan unik antar-dosen,
+        email dosen lain). Boleh berdomain apa pun (sejak 2026-09-17; sebelumnya wajib
+        @digitalbdg.ac.id), harus sah dan unik antar-dosen,
         karena email menentukan wewenang - kaprodi, pembimbing proyek, pengawas
         ujian. Rute lama PUT /dosen/nip dicabut.
       operationId: setEmailDosen
@@ -6410,7 +6411,7 @@ components:
       properties:
         email:
           type: string
-          description: Email kampus pemegang token, wajib @digitalbdg.ac.id
+          description: Email dosen pemegang token, domain apa pun (sejak 2026-09-17)
           example: "dosen@digitalbdg.ac.id"
     Mahasiswa:
       description: Satu baris roster akademik. Bukan akun - autentikasi tetap WhatsAuth, dan phonenumber di sini yang menghubungkan token ke identitas akademik.
