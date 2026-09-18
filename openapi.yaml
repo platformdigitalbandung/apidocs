@@ -29,6 +29,13 @@ info:
     3. Token dikirim balik lewat WebSocket sebagai `{"login": "<token>"}` dan
        disimpan di cookie `login` (`path=/`). Klien web mengirimnya sebagai
        `Authorization: Bearer <token>` pada setiap rute berskema `whatsauthToken`.
+    4. **Cadangan OTP** (sejak 2026-09-18): kalau halaman login sudah tidak
+       tersambung ke room QR saat pesan diproses, bot membalas dengan OTP 6 digit
+       (berlaku 5 menit, sekali pakai, dicabut setelah 5 kode salah) dan panduan
+       memakainya. Pengguna menekan **Masuk dengan OTP** di halaman login, lalu
+       halaman itu menukar nomor + OTP lewat `POST /whatsauth/otp` menjadi token
+       yang sama. OTP hanya dikirim bot ke nomor yang baru mengirim pesan
+       WhatsAuth; tidak ada rute untuk memintanya dari web.
 
     WebSocket hanya menerima `Origin` `https://platform.digitalbdg.ac.id`, jadi
     klien non-web tidak bisa membuat sesi login sendiri; skrip/agen memakai token
@@ -5052,6 +5059,45 @@ paths:
         - token:
             - write:apiKey
             - read:apiKey
+  /whatsauth/otp:
+    post:
+      tags:
+        - whatsauth
+      summary: Masuk dengan OTP WhatsAuth (publik)
+      description: >-
+        Menukar nomor WhatsApp + OTP 6 digit menjadi token login 18 jam (sama
+        dengan yang dikirim WebSocket WhatsAuth). OTP diterbitkan bot hanya saat
+        pesan WhatsAuth masuk tetapi halaman login sudah tidak tersambung ke room
+        QR-nya; berlaku 5 menit (indeks TTL koleksi `otplogin`), sekali pakai,
+        dan dicabut setelah 5 percobaan salah. Nomor boleh berawalan 0, 62, atau
+        +62. Dipakai tombol **Masuk dengan OTP** di halaman login.
+      operationId: masukOTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OTPLoginRequest'
+      responses:
+        '200':
+          description: OTP benar; token disimpan klien di cookie `login`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginInfo'
+        '401':
+          description: OTP salah, sudah dipakai, kedaluwarsa, atau dicabut karena terlalu banyak kode salah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Nomor tidak sah atau kode bukan 6 digit angka
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security: []
 components:
   schemas:
     JID:
@@ -5287,6 +5333,28 @@ components:
         message:
           type: string
           example: Pair Code Device
+    OTPLoginRequest:
+      type: object
+      required: [phonenumber, otp]
+      properties:
+        phonenumber:
+          type: string
+          example: '081234567890'
+        otp:
+          type: string
+          example: '042517'
+    LoginInfo:
+      description: Token login WhatsAuth, bentuk yang sama dengan pesan WebSocket `/ws/whatsauth/public`
+      type: object
+      properties:
+        phone:
+          type: string
+          example: '6281234567890'
+        alias:
+          type: string
+        login:
+          type: string
+          description: Token PASETO v4.public, berlaku 18 jam
     DetailError:
       description: Bentuk error khusus modul Portal Tugas & Kurikulum (beda dari ErrorMessage yang dipakai modul WhatsAuth)
       type: object

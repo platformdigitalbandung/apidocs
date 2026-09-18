@@ -46,7 +46,7 @@ Kode: `401` tanpa token · `403` nomor tak terdaftar / peran kurang · `404` tid
 ## Menambah rute di backend
 1. Fungsi domain di `apkflydev/mod/<modul>/` (dipakai bot dan API), handler di `controller/`, rute di `url/` dengan awalan `/api/<modul>/...`; rute statis didaftarkan sebelum rute berparameter (dijaga tes `url/ruteguard`).
 2. Struct dokumen/request/response di `apkflydev/model/` dulu; rahasia hanya lewat `buildvars` (ldflags), bukan `os.Getenv`.
-3. Setiap handler memanggil pemeriksa token/peran (dijaga `controller/polaguard/rutepublik_test.go`); rute publik hanya `/api/version`, `/health`, webhook autograder, tautan tinjauan atasan.
+3. Setiap handler memanggil pemeriksa token/peran (dijaga `controller/polaguard/rutepublik_test.go`); rute publik hanya `/api/version`, `/health`, webhook autograder, tautan tinjauan atasan, dan `POST /api/whatsauth/otp` (penukar OTP yang dikirim bot).
 4. Perbarui `openapi.yaml` (naikkan `info.version`, catat di tabel README apidocs) dan panduan peran yang terdampak di repo `panduan` pada commit yang sama.
 
 ## Verifikasi
