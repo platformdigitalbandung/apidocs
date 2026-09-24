@@ -4983,6 +4983,10 @@ paths:
                   items:
                     type: string
                   example: ["081234567890", "6285700000001"]
+                  description: Nomor tanpa 0 di depan yang diawali 8 (mis. dari spreadsheet) dianggap nomor Indonesia dan diberi 62.
+                izinkan_luar_negeri:
+                  type: boolean
+                  description: Tanpa ini, daftar yang memuat nomor tidak berawalan 62 ditolak 422 (hampir selalu salah tulis).
       responses:
         '200':
           description: Grup dibuat
@@ -5009,6 +5013,7 @@ paths:
                           type: string
                         kode:
                           type: integer
+                          description: 403 = privasi (undang lewat tautan); -1 = status tidak diketahui (bisa saja sudah masuk)
                   bukan_wa:
                     type: array
                     items:
