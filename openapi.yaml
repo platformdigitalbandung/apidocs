@@ -4954,6 +4954,86 @@ paths:
         - token:
             - write:apiKey
             - read:apiKey
+  /v2/group/create:
+    post:
+      tags:
+        - message
+      summary: Bot membuat grup WhatsApp dari daftar nomor (bot, header `token`)
+      description: |
+        Nomor bot (Id token di header `token`, sama dengan `/v2/send/message/text`)
+        membuat grup WhatsApp bernama `nama` (maksimal 25 karakter) dan langsung
+        memasukkan `peserta` yang terdaftar di WhatsApp. Nomor dibakukan (awalan
+        `0` → `62`, dobel dibuang). Peserta yang menolak dimasukkan langsung karena
+        pengaturan privasi masuk ke `gagal` (kode 403) dan bisa bergabung lewat
+        `tautan`; nomor yang tidak ada di WhatsApp masuk ke `bukan_wa`.
+      operationId: buatGrupWA
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nama, peserta]
+              properties:
+                nama:
+                  type: string
+                  maxLength: 25
+                  example: PKKMB Maba ADB 2026
+                peserta:
+                  type: array
+                  items:
+                    type: string
+                  example: ["081234567890", "6285700000001"]
+      responses:
+        '200':
+          description: Grup dibuat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group_id:
+                    type: string
+                  tautan:
+                    type: string
+                    description: Tautan undangan grup
+                  ditambahkan:
+                    type: array
+                    items:
+                      type: string
+                  gagal:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        nomor:
+                          type: string
+                        kode:
+                          type: integer
+                  bukan_wa:
+                    type: array
+                    items:
+                      type: string
+        '403':
+          description: Header `token` tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+        '409':
+          description: Sesi WhatsApp bot belum berjalan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+        '422':
+          description: Nama kosong/terlalu panjang, peserta kosong, atau WhatsApp menolak
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorMessage'
+      security:
+        - token:
+            - write:apiKey
   /send/message/image:
     post:
       tags:
