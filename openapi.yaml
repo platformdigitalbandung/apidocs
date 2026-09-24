@@ -4963,7 +4963,7 @@ paths:
         Nomor bot (Id token di header `token`, sama dengan `/v2/send/message/text`)
         membuat grup WhatsApp bernama `nama` (maksimal 25 karakter) dan langsung
         memasukkan `peserta` yang terdaftar di WhatsApp. Nomor dibakukan (awalan
-        `0` → `62`, dobel dibuang). Peserta yang menolak dimasukkan langsung karena
+        `0`/`8` → `62`, dobel dibuang). Peserta yang menolak dimasukkan langsung karena
         pengaturan privasi masuk ke `gagal` (kode 403) dan bisa bergabung lewat
         `tautan`; nomor yang tidak ada di WhatsApp masuk ke `bukan_wa`.
       operationId: buatGrupWA
@@ -4983,10 +4983,7 @@ paths:
                   items:
                     type: string
                   example: ["081234567890", "6285700000001"]
-                  description: Nomor tanpa 0 di depan yang diawali 8 (mis. dari spreadsheet) dianggap nomor Indonesia dan diberi 62.
-                izinkan_luar_negeri:
-                  type: boolean
-                  description: Tanpa ini, daftar yang memuat nomor tidak berawalan 62 ditolak 422 (hampir selalu salah tulis).
+                  description: Nomor WhatsApp Indonesia dengan awalan 0, 8, atau 62 (nomor dari spreadsheet sering kehilangan 0 di depan). Bila ada satu saja nomor yang tidak sah, grup tidak dibuat (422).
       responses:
         '200':
           description: Grup dibuat
