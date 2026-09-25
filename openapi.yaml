@@ -14,9 +14,22 @@ info:
 
     ## Cara mendapatkan token
 
-    Tidak ada login/password dan tidak ada pendaftaran mandiri. Identitas adalah
-    nomor WhatsApp, dibuktikan lewat **WhatsAuth** di satu-satunya halaman login
-    `https://platform.digitalbdg.ac.id/login/`:
+    Tidak ada pendaftaran mandiri: akun adalah mahasiswa di roster atau dosen di
+    `dosentugas` yang didaftarkan pengelola. Satu-satunya halaman login
+    `https://platform.digitalbdg.ac.id/login/` punya dua cara masuk yang
+    menghasilkan token yang **sama** (Id = nomor WhatsApp di data pengguna):
+
+    **A. NIM/email + kata sandi** (sejak 2026-09-25): `POST /akun/masuk` dengan
+    `{"identitas": "<NIM atau email>", "sandi": "..."}` membalas `LoginInfo`.
+    Mahasiswa masuk dengan NIM (atau email roster), dosen dengan email kampus.
+    Kata sandi yang belum pernah diganti adalah **templat**: bagian email sebelum
+    `@` (huruf kecil) + `ADB`; mahasiswa tanpa email: NIM + `ADB`. Kata sandi
+    diganti lewat `PUT /akun/sandi`; admin/kaprodi mereset ke templat lewat
+    `POST /pengguna/sandi/reset`. Percobaan gagal dibatasi 10 per NIM/email dan
+    30 per alamat IP dalam 15 menit (`429`). Akun tanpa nomor WhatsApp dan dosen
+    nonaktif ditolak `403`.
+
+    **B. WhatsAuth** (nomor WhatsApp dibuktikan lewat pesan ke bot):
 
     1. Halaman login membuka WebSocket `wss://apk.fly.dev/ws/whatsauth/public`,
        mengirim `uuid` acak, lalu menampilkan QR / tombol Buka WhatsApp yang
@@ -123,7 +136,7 @@ info:
   license:
     name: MIT
     url: https://github.com/platformdigitalbandung/apidocs/blob/main/LICENSE
-  version: 1.2.0
+  version: 1.3.0
 externalDocs:
   description: Pedoman proyek, peran, dan konvensi klien (README repo pdb)
   url: https://github.com/platformdigitalbandung/pdb#readme
@@ -204,6 +217,10 @@ tags:
     description: Laporan kepatuhan per mata kuliah untuk akreditasi - menit asinkron, daring sinkron, dan opsional luring/daring terhadap tuntutan SKS, beserta bukti penilaian dan CPL
   - name: proyekblok
     description: Modul Blok/Proyek - instance proyek per rumpun kurikulum dan penilaian per mahasiswa per mata kuliah
+  - name: akun
+    description: Masuk dengan NIM/email + kata sandi (templat bagian email sebelum @ + ADB) dan ganti kata sandi sendiri
+  - name: pengguna
+    description: Halaman Pengguna untuk admin dan kaprodi - dosen, mahasiswa, reset kata sandi ke templat, aktif/nonaktif, dan jabatan admin
 paths:
   /health:
     # Rute ini ada di AKAR, bukan di bawah /api - server default dokumen ini
@@ -5180,6 +5197,566 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
       security: []
+  /akun/masuk:
+    post:
+      tags:
+        - akun
+      summary: Masuk dengan NIM/email + kata sandi (publik)
+      description: >-
+        Menukar NIM (mahasiswa) atau email (dosen, atau email roster mahasiswa) +
+        kata sandi menjadi token 18 jam yang sama dengan WhatsAuth: Id = nomor
+        WhatsApp di data pengguna, role dari basis data. Email dicari di dosen
+        lebih dulu, lalu di roster; tidak peka huruf besar/kecil. Kata sandi yang
+        belum pernah diganti = templat (bagian email sebelum @ + ADB; mahasiswa
+        tanpa email NIM + ADB). Akun tidak ditemukan dan kata sandi salah dijawab
+        sama (`401`). Dipakai tab **Kata sandi** halaman login.
+      operationId: masukSandi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MasukSandiRequest'
+      responses:
+        '200':
+          description: Kata sandi benar; token disimpan klien di cookie `login`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginInfo'
+        '401':
+          description: NIM/email atau kata sandi salah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Akun belum punya nomor WhatsApp, atau dosen nonaktif
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Isian kosong, atau email roster dipakai lebih dari satu mahasiswa (masuk dengan NIM)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '429':
+          description: Lebih dari 10 percobaan gagal per NIM/email atau 30 per IP dalam 15 menit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security: []
+  /akun/sandi:
+    get:
+      tags:
+        - akun
+      summary: Status kata sandi pemilik token
+      description: >-
+        Identitas yang dipakai untuk masuk (NIM atau email kampus), apakah kata
+        sandinya masih templat, dan apakah akun ini bisa masuk dengan kata sandi
+        (dosen tanpa email kampus belum bisa). Dipakai halaman Ganti Kata Sandi.
+      operationId: statusSandi
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusSandi'
+        '401':
+          description: Token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor token bukan dosen aktif maupun mahasiswa roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+    put:
+      tags:
+        - akun
+      summary: Ganti kata sandi sendiri
+      description: >-
+        Mengganti kata sandi pemilik token setelah kata sandi lamanya (templat atau
+        yang tersimpan) terbukti. Kata sandi baru 8-128 karakter dan tidak sama
+        dengan templat. Disimpan sebagai hash argon2id di koleksi `katasandi`;
+        templat berhenti berlaku. Percobaan dengan kata sandi lama yang salah
+        dibatasi seperti halaman masuk.
+      operationId: gantiSandi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GantiSandiRequest'
+      responses:
+        '200':
+          description: Kata sandi baru tersimpan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  identitas:
+                    type: string
+                    description: NIM atau email yang dipakai untuk masuk
+        '401':
+          description: Token tidak sah, atau kata sandi lama salah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor token bukan dosen aktif maupun mahasiswa roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Kata sandi baru terlalu pendek/panjang atau sama dengan templat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '429':
+          description: Terlalu banyak percobaan kata sandi lama yang salah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /pengguna/dosen:
+    get:
+      tags:
+        - pengguna
+      summary: Daftar dosen untuk halaman Pengguna (admin, kaprodi)
+      description: >-
+        Admin: semua dosen, aktif dan nonaktif. Kaprodi: dosen aktif yang mengajar
+        di prodi yang dipimpinnya. Berbeda dari `GET /jabatan/dosen`, balasan ini
+        memuat nomor WhatsApp dan status kata sandi (alat pengelola). `admin` dan
+        `lingkup` menyebut hak pemanggil (dari basis data).
+      operationId: daftarPenggunaDosen
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dosen:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PenggunaDosen'
+                  admin:
+                    type: boolean
+                  lingkup:
+                    type: array
+                    description: Kode prodi yang dipimpin pemanggil sebagai kaprodi
+                    items:
+                      type: string
+        '401':
+          description: Token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan admin maupun kaprodi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+    post:
+      tags:
+        - pengguna
+      summary: Tambah dosen (admin, kaprodi)
+      description: >-
+        Mendaftarkan nomor WhatsApp sebagai dosen aktif — jalur web perintah
+        WhatsApp `daftarkan dosen` (fungsi domain yang sama). Nomor dibakukan
+        (awalan 0, 8, atau 62 → 62…). Nomor yang sudah dosen aktif tidak ditimpa
+        (`baru: false`); nomor di roster mahasiswa ditolak; nomor dosen nonaktif
+        hanya diaktifkan kembali admin. Email kampus diisi dosennya sendiri.
+      operationId: tambahPenggunaDosen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TambahDosenRequest'
+      responses:
+        '200':
+          description: Dosen terdaftar (atau sudah terdaftar)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  nama:
+                    type: string
+                  nohp:
+                    type: string
+                  aktif:
+                    type: boolean
+                  baru:
+                    type: boolean
+        '401':
+          description: Token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan admin/kaprodi, atau kaprodi mencoba mengaktifkan kembali dosen nonaktif
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Nama kosong, nomor tidak sah, atau nomor milik mahasiswa roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /pengguna/dosen/{id}:
+    put:
+      tags:
+        - pengguna
+      summary: Ubah nama dan nomor WhatsApp dosen (admin)
+      description: >-
+        Email kampus tidak diubah di sini — dosennya sendiri yang mengisi, karena
+        email menentukan wewenang. Nomor dibakukan dan tidak boleh dipakai dosen
+        lain atau mahasiswa roster.
+      operationId: ubahPenggunaDosen
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: _id dokumen dosentugas (24 heksadesimal), dari GET /pengguna/dosen
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UbahDosenRequest'
+      responses:
+        '200':
+          description: Tersimpan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  nama:
+                    type: string
+                  nohp:
+                    type: string
+        '401':
+          description: Token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Dosen tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Nama kosong, nomor tidak sah, atau nomor sudah dipakai
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /pengguna/dosen/{id}/aktif:
+    put:
+      tags:
+        - pengguna
+      summary: Aktifkan atau nonaktifkan dosen (admin)
+      description: >-
+        Menonaktifkan menggugurkan semua peran dosen, kaprodi, dan admin orang itu
+        dan menolak masuknya (kata sandi maupun WhatsAuth). Admin tidak bisa
+        menonaktifkan dirinya sendiri, dan admin aktif terakhir tidak bisa
+        dinonaktifkan.
+      operationId: aktifPenggunaDosen
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: _id dokumen dosentugas (24 heksadesimal), dari GET /pengguna/dosen
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AktifRequest'
+      responses:
+        '200':
+          description: Tersimpan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  aktif:
+                    type: boolean
+        '401':
+          description: Token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan admin, menonaktifkan diri sendiri, atau admin aktif terakhir
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Dosen tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /pengguna/dosen/{id}/admin:
+    put:
+      tags:
+        - pengguna
+      summary: Tetapkan atau cabut jabatan admin (admin)
+      description: >-
+        Mengisi atau menghapus `dosentugas.jabatan = "admin"` (keputusan developer
+        Arfan 2026-09-25; sebelumnya hanya lewat basis data). Hanya dosen aktif yang
+        bisa dijadikan admin; admin aktif terakhir tidak bisa dicabut. Setiap
+        perubahan dicatat di koleksi `riwayatjabatan`. Klaim `role` di token orang
+        itu berubah setelah ia masuk ulang; `IsPimpinanAdmin` membaca basis data.
+      operationId: adminPenggunaDosen
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: _id dokumen dosentugas (24 heksadesimal), dari GET /pengguna/dosen
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JabatanAdminRequest'
+      responses:
+        '200':
+          description: Tersimpan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  admin:
+                    type: boolean
+        '401':
+          description: Token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan admin, atau admin aktif terakhir
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Dosen tidak ditemukan atau nonaktif
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /pengguna/mahasiswa:
+    get:
+      tags:
+        - pengguna
+      summary: Daftar mahasiswa untuk halaman Pengguna (admin, kaprodi)
+      description: >-
+        Roster beserta status kata sandi. Kaprodi hanya prodi yang dipimpinnya
+        (`prodi` kosong = semua prodinya); admin semua prodi. Menambah dan mengubah
+        mahasiswa tetap lewat `POST /mahasiswa`.
+      operationId: daftarPenggunaMahasiswa
+      parameters:
+        - name: prodi
+          in: query
+          required: false
+          description: Kode prodi; kosong = semua prodi dalam lingkup pemanggil
+          schema:
+            type: string
+        - name: angkatan
+          in: query
+          required: false
+          description: Tahun angkatan, mis. 2026
+          schema:
+            type: string
+        - name: cari
+          in: query
+          required: false
+          description: Potongan NIM atau nama, tidak peka huruf besar/kecil
+          schema:
+            type: string
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mahasiswa:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PenggunaMahasiswa'
+        '401':
+          description: Token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan admin/kaprodi, atau kaprodi membuka prodi lain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /pengguna/riwayat-jabatan:
+    get:
+      tags:
+        - pengguna
+      summary: Riwayat penetapan/pencabutan admin (admin)
+      description: 50 perubahan jabatan admin terbaru lewat halaman Pengguna, terbaru dulu.
+      operationId: riwayatJabatan
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  riwayat:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RiwayatJabatan'
+        '401':
+          description: Token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /pengguna/sandi/reset:
+    post:
+      tags:
+        - pengguna
+      summary: Reset kata sandi ke templat (admin, kaprodi)
+      description: >-
+        Menghapus kata sandi yang sudah diganti sehingga templat berlaku lagi, dan
+        membersihkan hitungan percobaan gagal akun itu. Admin: siapa pun. Kaprodi:
+        mahasiswa prodinya dan dosen yang mengajar di prodinya, kecuali admin dan
+        kaprodi.
+      operationId: resetSandi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetSandiRequest'
+      responses:
+        '200':
+          description: Kata sandi kembali ke templat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  identitas:
+                    type: string
+                  templat_bisa_dipakai:
+                    type: boolean
+                    description: false kalau akun belum punya templat (dosen tanpa email)
+        '401':
+          description: Token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Di luar lingkup pemanggil, atau kaprodi mereset admin/kaprodi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Pengguna tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Peran bukan mahasiswa/dosen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
 components:
   schemas:
     JID:
@@ -7341,6 +7918,162 @@ components:
             type: array
             items:
               $ref: '#/components/schemas/TextMessageResponse'
+    MasukSandiRequest:
+      type: object
+      required:
+        - identitas
+        - sandi
+      properties:
+        identitas:
+          type: string
+          description: NIM (mahasiswa) atau email (dosen / roster mahasiswa)
+          example: 2026TRPL001
+        sandi:
+          type: string
+          format: password
+    GantiSandiRequest:
+      type: object
+      required:
+        - sandi_lama
+        - sandi_baru
+      properties:
+        sandi_lama:
+          type: string
+          format: password
+          description: Kata sandi yang berlaku sekarang (templat atau yang tersimpan)
+        sandi_baru:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+    StatusSandi:
+      type: object
+      properties:
+        peran:
+          type: string
+          enum:
+            - mahasiswa
+            - dosen
+        identitas:
+          type: string
+          description: NIM atau email kampus untuk masuk
+        templat:
+          type: boolean
+          description: true = masih kata sandi templat
+        bisa_masuk:
+          type: boolean
+        alasan:
+          type: string
+          description: Diisi kalau bisa_masuk false
+    ResetSandiRequest:
+      type: object
+      required:
+        - peran
+        - id
+      properties:
+        peran:
+          type: string
+          enum:
+            - mahasiswa
+            - dosen
+        id:
+          type: string
+          description: _id dokumen mahasiswa atau dosentugas (24 heksadesimal)
+    PenggunaDosen:
+      type: object
+      properties:
+        id:
+          type: string
+        nama:
+          type: string
+        nohp:
+          type: string
+        email:
+          type: string
+          description: Email kampus; kosong = belum diisi dosennya (belum bisa masuk dengan kata sandi)
+        aktif:
+          type: boolean
+        admin:
+          type: boolean
+        kaprodi_prodi:
+          type: array
+          items:
+            type: string
+        prodi_kode:
+          type: array
+          description: Prodi tempat mengajar (dicentang kaprodi)
+          items:
+            type: string
+        sandi_sendiri:
+          type: boolean
+          description: false = masih kata sandi templat
+    PenggunaMahasiswa:
+      allOf:
+        - $ref: '#/components/schemas/Mahasiswa'
+        - type: object
+          properties:
+            sandi_sendiri:
+              type: boolean
+              description: false = masih kata sandi templat
+    TambahDosenRequest:
+      type: object
+      required:
+        - nohp
+        - nama
+      properties:
+        nohp:
+          type: string
+          description: Nomor WhatsApp; awalan 0, 8, atau 62 dibakukan jadi 62…
+          example: '081234567890'
+        nama:
+          type: string
+    UbahDosenRequest:
+      type: object
+      required:
+        - nama
+        - nohp
+      properties:
+        nama:
+          type: string
+        nohp:
+          type: string
+    AktifRequest:
+      type: object
+      required:
+        - aktif
+      properties:
+        aktif:
+          type: boolean
+    JabatanAdminRequest:
+      type: object
+      required:
+        - admin
+      properties:
+        admin:
+          type: boolean
+    RiwayatJabatan:
+      type: object
+      properties:
+        id:
+          type: string
+        dosen_id:
+          type: string
+        nama:
+          type: string
+          description: Snapshot nama dosen saat itu
+        jabatan:
+          type: string
+        aksi:
+          type: string
+          enum:
+            - tetapkan
+            - cabut
+        oleh:
+          type: string
+          description: Email kampus (atau wa:<nomor>) admin yang mengubah
+        pada:
+          type: string
+          format: date-time
   securitySchemes:
     token:
       type: apiKey
@@ -7354,9 +8087,10 @@ components:
         Token PASETO WhatsAuth (satu keypair bersama PUBLICKEY/PRIVATEKEY untuk
         seluruh backend) atas nama nomor WhatsApp pemegangnya — mahasiswa di
         roster, dosen, kaprodi, maupun admin (dulu bernama `dosenToken`; peran
-        dibaca dari klaim `role`, bukan dari nama skema). Didapat hanya lewat
-        halaman login https://platform.digitalbdg.ac.id/login/ (WhatsAuth QR /
-        magic link; lihat "Cara mendapatkan token" di pengantar). Dikirim sebagai
+        dibaca dari klaim `role`, bukan dari nama skema). Didapat lewat halaman
+        login https://platform.digitalbdg.ac.id/login/ — NIM/email + kata sandi
+        (`POST /akun/masuk`) atau WhatsAuth QR / magic link / OTP; lihat "Cara
+        mendapatkan token" di pengantar. Dikirim sebagai
         `Authorization: Bearer <token>` — BUKAN header `token` seperti endpoint
         bot WhatsApp/device. Berlaku 18 jam; perubahan peran baru terbaca setelah
         masuk ulang.
