@@ -6167,7 +6167,7 @@ paths:
         - kelas
       summary: Kelas satu prodi (kaprodi prodinya, admin semua prodi)
       description: >-
-        Untuk halaman Kelola Kelas. `prodi` boleh kosong kalau kaprodi hanya memimpin satu prodi.
+        Untuk halaman Siapkan Semester (`semester.html`). `prodi` boleh kosong kalau kaprodi hanya memimpin satu prodi.
         Ikut dikirim kalender terbit prodi itu (pilihan saat menambah kelas manual).
       operationId: daftarKelas
       parameters:
