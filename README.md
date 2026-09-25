@@ -29,7 +29,8 @@ Dokumentasi API backend `https://apk.fly.dev`, di-serve lewat GitHub Pages di
 
 | Versi | Tanggal | Backend (`/api/version`) | Catatan |
 |---|---|---|---|
-| 1.4.0 | 2026-09-25 | `apkflydev` (commit kelas) | Kelas sebagai pusat pembelajaran (`/kelas/...`: kelas saya, kelola kelas, isi per minggu, tugas kelas, bobot & buku nilai), penilaian tugas (`/tugas/{id}/kiriman`, nilai & kembalikan, lampiran soal, ubah/hapus tugas), `mk_kode` di materi & kuis, hak tulis per kelas; skema akun/pengguna 1.3.0 dipindah dari `requestBodies` ke `schemas` (rujukannya sempat patah); 20 operasi baru, 106 path, 134 skema, lolos `swagger-parser validate` |
+| 1.5.0 | 2026-09-25 | `apkflydev` `a7bcddb` | Pengumuman kelas (`/kelas/{id}/pengumuman`, opsi kirim ke grup WhatsApp kelas), `grup_wa` di detail kelas (grup WhatsApp per kelas); 3 operasi baru, 108 path, 137 skema |
+| 1.4.0 | 2026-09-25 | `apkflydev` `6b466f4` | Kelas sebagai pusat pembelajaran (`/kelas/...`: kelas saya, kelola kelas, isi per minggu, tugas kelas, bobot & buku nilai), penilaian tugas (`/tugas/{id}/kiriman`, nilai & kembalikan, lampiran soal, ubah/hapus tugas), `mk_kode` di materi & kuis, hak tulis per kelas; skema akun/pengguna 1.3.0 dipindah dari `requestBodies` ke `schemas` (rujukannya sempat patah); 20 operasi baru, 106 path, 134 skema, lolos `swagger-parser validate` |
 | 1.3.0 | 2026-09-25 | `apkflydev` (commit login kata sandi) | Masuk dengan NIM/email + kata sandi (`/akun/masuk`, `/akun/sandi`), halaman Pengguna (`/pengguna/...`: dosen, mahasiswa, reset kata sandi, aktif/nonaktif, jabatan admin); 11 operasi baru, 92 path, 100 skema |
 | 1.2.0 | 2026-09-15 | `apkflydev` `be500df` | Pengantar untuk developer/AI (token, peran, galat, batas, alur), skema `whatsauthToken` (dulu `dosenToken`), semua parameter berdeskripsi, body galat untuk rute bot lama, `SKILL.md` |
 | 1.1.0 | 2026-09-15 | `apkflydev` `9289958` | 100 operasi, 80 path, 98 skema; seed kurikulum hanya `trpl` |

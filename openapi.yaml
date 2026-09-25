@@ -146,7 +146,7 @@ info:
   license:
     name: MIT
     url: https://github.com/platformdigitalbandung/apidocs/blob/main/LICENSE
-  version: 1.4.0
+  version: 1.5.0
 externalDocs:
   description: Pedoman proyek, peran, dan konvensi klien (README repo pdb)
   url: https://github.com/platformdigitalbandung/pdb#readme
@@ -236,7 +236,9 @@ tags:
       Kelas sebagai pusat pembelajaran (sejak 2026-09-25, keputusan developer Arfan) - satu kelas per rumpun
       berproyek pengikat, atau per mata kuliah untuk rumpun wadah mata kuliah lepas, dalam satu kalender
       semester terbit. Peserta otomatis dari roster (prodi + angkatan + semester), pengajar ditunjuk kaprodi,
-      tugas bertenggat, dan buku nilai berbobot. Hak menulis materi, kuis, tugas, rekaman, dan nilai ikut kelas.
+      tugas bertenggat, buku nilai berbobot, pengumuman, dan satu grup WhatsApp per kelas (dibuat lewat bot;
+      pengingat tenggat tugas dikirim bot ke grup itu 24 jam sebelumnya). Hak menulis materi, kuis, tugas,
+      rekaman, dan nilai ikut kelas.
 paths:
   /health:
     # Rute ini ada di AKAR, bukan di bawah /api - server default dokumen ini
@@ -6487,6 +6489,143 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - whatsauthToken: []
+  /kelas/{id}/pengumuman:
+    get:
+      tags:
+        - kelas
+      summary: Pengumuman kelas (anggota kelas)
+      description: 50 pengumuman terbaru di Beranda kelas, terbaru dulu (sejak 2026-09-25, tahap 3).
+      operationId: daftarPengumumanKelas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "Id kelas (ObjectID) dari `GET /kelas/saya` atau `GET /kelas`."}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pengumuman:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PengumumanKelas'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan anggota kelas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kelas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+    post:
+      tags:
+        - kelas
+      summary: Buat pengumuman kelas (pengajar kelas / kaprodinya)
+      description: >-
+        Isi 1-3000 karakter. `kirim_grup: true` juga mengirimnya lewat bot ke grup WhatsApp kelas
+        (satu pesan per kelas). Pengumuman tetap tersimpan walau pengiriman ke grup gagal; hasilnya
+        di `grup`: `terkirim`, kosong (tidak diminta), atau keterangan kegagalan (kelas belum punya
+        grup, bot tidak tersambung).
+      operationId: buatPengumumanKelas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "Id kelas (ObjectID) dari `GET /kelas/saya` atau `GET /kelas`."}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PengumumanRequest'
+      responses:
+        '201':
+          description: Pengumuman tersimpan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pengumuman:
+                    $ref: '#/components/schemas/PengumumanKelas'
+                  grup:
+                    type: string
+                    example: terkirim
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan pengajar kelas maupun kaprodinya
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kelas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Isi kosong atau lebih dari 3000 karakter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /kelas/{id}/pengumuman/{pid}:
+    delete:
+      tags:
+        - kelas
+      summary: Hapus pengumuman kelas (pengajar kelas / kaprodinya)
+      description: Pesan yang sudah terkirim ke grup WhatsApp tidak ikut ditarik.
+      operationId: hapusPengumumanKelas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "Id kelas (ObjectID) dari `GET /kelas/saya` atau `GET /kelas`."}
+        - {in: path, name: pid, required: true, schema: {type: string}, description: "Id pengumuman dari `GET /kelas/{id}/pengumuman`"}
+      responses:
+        '200':
+          description: Terhapus
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan pengajar kelas maupun kaprodinya
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kelas atau pengumuman tidak ditemukan (termasuk pengumuman kelas lain)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
   /kelas/{id}/isi:
     get:
       tags:
@@ -7113,11 +7252,38 @@ components:
         - $ref: '#/components/schemas/KelasRingkas'
         - type: object
           properties:
+            grup_wa:
+              $ref: '#/components/schemas/GrupWAKelas'
             peserta: {type: array, items: {$ref: '#/components/schemas/OrangKelas'}}
             mata_kuliah: {type: array, items: {$ref: '#/components/schemas/MataKuliah'}}
             minggu_awal: {type: string, format: date-time, description: Senin minggu 1 kalender}
             jumlah_minggu: {type: integer}
             minggu_ini: {type: integer, description: 0 = di luar rentang kalender}
+    GrupWAKelas:
+      description: >-
+        Grup WhatsApp kelas (sejak 2026-09-25, satu grup per kelas). `tautan_buat` (wa.me ke bot dengan
+        pesan `daftar grup | <id kelas> | <nama kelas>`) hanya untuk pengajar/kaprodi selama grupnya belum ada.
+      type: object
+      properties:
+        ada: {type: boolean}
+        tautan_undangan: {type: string, example: "https://chat.whatsapp.com/AbCdEf"}
+        tautan_buat: {type: string}
+    PengumumanKelas:
+      type: object
+      properties:
+        id: {type: string}
+        kelas_id: {type: string}
+        isi: {type: string}
+        oleh: {type: string, description: "Email kampus penulis"}
+        oleh_nama: {type: string, description: "Nama penulis, dibaca dari data dosen saat ditampilkan"}
+        ke_grup: {type: boolean, description: "Sudah terkirim ke grup WhatsApp kelas"}
+        dibuat: {type: string, format: date-time}
+    PengumumanRequest:
+      type: object
+      required: [isi]
+      properties:
+        isi: {type: string, maxLength: 3000, example: "Kelas daring Kamis dimulai pukul 19.00."}
+        kirim_grup: {type: boolean, description: "Kirim juga ke grup WhatsApp kelas lewat bot"}
     KalenderRingkasKelas:
       type: object
       properties:
