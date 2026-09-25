@@ -62,10 +62,9 @@ info:
     | Peran | Ditentukan dari | Hak utama |
     |---|---|---|
     | mahasiswa | nomor ada di roster `mahasiswa` (tanpa klaim role) | materi, kuis, tugas, forum, nilai, rapor, dasbor, proyek kerja, RPL — hanya prodi rosternya |
-    | dosen | `dosentugas` aktif → role `dosen` | membaca semua prodi; roster & email kampus; tinjau RPL, rapor per NIM, pengawas ujian, proyek blok, proyek kerja bimbingan |
-    | dosen pengampu | `dosentugas.prodi_kode` dicentang kaprodi | daftar pilihan pengajar kelas prodi itu (sejak 2026-09-25 centang ini saja tidak memberi hak menulis) |
+    | dosen | `dosentugas` aktif → role `dosen` | membaca semua prodi; roster & email kampus; tinjau RPL, rapor per NIM, pengawas ujian, proyek kerja bimbingan |
     | pengajar kelas | email kampus ada di `kelas.pengajar`, ditunjuk kaprodi | + materi & kuis rumpun/mata kuliah kelas itu, tugas bertenggat, penilaian, bobot & buku nilai, rekaman sesi kalender kelas itu |
-    | kaprodi | `prodi.kaprodi_email` → role `kaprodi` | + kurikulum, kalender semester, centang pengampu, kelola kelas (pengajar, peserta), semua hak pengajar di kelas prodinya, laporan tingkat prodi **prodinya** |
+    | kaprodi | `prodi.kaprodi_email` → role `kaprodi` | + kurikulum, kalender semester, kelola kelas (menunjuk pengajar dari semua dosen aktif, peserta), semua hak pengajar di kelas prodinya, laporan tingkat prodi **prodinya** |
     | admin | `dosentugas.jabatan = "admin"` → role `admin` | menetapkan kaprodi, membuat prodi baru, laporan semua prodi; **tidak** mengubah kurikulum/kalender/kuis/materi/tugas |
 
     Tanpa token → `401`; nomor tidak terdaftar atau peran kurang → `403`;
@@ -97,9 +96,9 @@ info:
 
     - **Menyiapkan prodi (kaprodi):** `PUT /kurikulum/prodi/{prodi}` → rumpun/CPL
       → `PUT /kurikulum/ritme/{nama}` → `POST /kalender` → `PUT /kalender/{id}`
-      → `POST /kalender/{id}/terbitkan` → `PUT /jabatan/dosen/{email}/prodi`
-      (centang pengampu) → kelas dibuat otomatis saat kalender terbit →
-      `GET /kelas/pilihan-pengajar` → `PUT /kelas/{id}` (tunjuk pengajar).
+      → `POST /kalender/{id}/terbitkan` (kelas dibuat otomatis) →
+      `GET /kelas/pilihan-pengajar` (semua dosen aktif ber-email) → `PUT /kelas/{id}`
+      (tunjuk pengajar; pengajar otomatis tercatat di prodi kelas itu).
     - **Kelas (sejak 2026-09-25):** `GET /kelas/saya` → `GET /kelas/{id}` →
       `GET /kelas/{id}/isi` (materi, kuis, tugas per minggu) →
       `GET /kelas/{id}/nilai` (buku nilai; peserta hanya barisnya).
@@ -109,8 +108,8 @@ info:
       terlambat) → `GET /tugas/{id}/kiriman` → `GET /tugas/kiriman/{kid}/berkas`
       → `PUT /tugas/{id}/kiriman/{kid}/nilai` (`kembalikan: true` memperlihatkan
       nilai ke mahasiswa dan memasukkannya ke buku nilai) →
-      `GET /tugas/{id}/laporan` (kemiripan). Tugas prodi lama (`POST /tugas`)
-      tetap berlaku.
+      `GET /tugas/{id}/laporan` (kemiripan). Sejak 2026-09-26 semua tugas milik
+      kelas; tugas prodi (tanpa kelas) dan `POST /tugas` dihapus.
     - **Materi & kuis mingguan:** `POST /materi` (+ `POST /materi/{id}/berkas`)
       → mahasiswa `GET /materi?rumpun=&minggu=` → `POST /progresmateri`;
       `POST /kuisgerbang` → `GET /kuisgerbang/{rumpun}/{minggu}` →
@@ -146,7 +145,7 @@ info:
   license:
     name: MIT
     url: https://github.com/platformdigitalbandung/apidocs/blob/main/LICENSE
-  version: 1.5.0
+  version: 1.6.0
 externalDocs:
   description: Pedoman proyek, peran, dan konvensi klien (README repo pdb)
   url: https://github.com/platformdigitalbandung/pdb#readme
@@ -226,7 +225,11 @@ tags:
   - name: kepatuhan
     description: Laporan kepatuhan per mata kuliah untuk akreditasi - menit asinkron, daring sinkron, dan opsional luring/daring terhadap tuntutan SKS, beserta bukti penilaian dan CPL
   - name: proyekblok
-    description: Modul Blok/Proyek - instance proyek per rumpun kurikulum dan penilaian per mahasiswa per mata kuliah
+    description: >-
+      Modul Blok/Proyek - instance proyek per rumpun kurikulum dan penilaian per mahasiswa per mata kuliah.
+      DIPENSIUNKAN sejak 2026-09-26 (keputusan developer Arfan, satu sistem nilai) - penilaian dilakukan di buku
+      nilai kelas rumpun (tag kelas); rapor, cakupan CPL, dan laporan kepatuhan tidak lagi membaca rute ini.
+      Rute tetap ada, halamannya dialihkan.
   - name: akun
     description: Masuk dengan NIM/email + kata sandi (templat bagian email sebelum @ + ADB) dan ganti kata sandi sendiri
   - name: pengguna
@@ -276,10 +279,9 @@ paths:
       summary: Daftar tugas
       description: >-
         Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster). Mahasiswa hanya menerima
-        tugas prodi rosternya yang bukan tugas kelas (sejak 2026-09-15; query prodi diabaikan, tugas lama
-        tanpa prodi tidak ikut) ditambah tugas kelas yang ia ikuti (sejak 2026-09-25), dan tiap tugas
-        membawa sudah_kirim dan kirim_terakhir miliknya sendiri. Dosen, kaprodi, dan admin menerima
-        semua tugas, bisa disaring dengan query prodi.
+        tugas kelas yang ia ikuti (sejak 2026-09-26 tugas prodi tanpa kelas dihapus; query prodi
+        diabaikan), dan tiap tugas membawa sudah_kirim dan kirim_terakhir miliknya sendiri. Dosen,
+        kaprodi, dan admin menerima semua tugas, bisa disaring dengan query prodi.
       operationId: daftarTugas
       security:
         - whatsauthToken: []
@@ -314,58 +316,6 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/TugasRingkas'
-    post:
-      tags:
-        - tugas
-      summary: Buat tugas baru
-      description: >-
-        Tugas prodi (jalur lama, tanpa kelas dan tanpa tenggat) - tampil untuk semua mahasiswa roster
-        prodi itu. Sejak 2026-09-25 hanya pengajar kelas di prodi itu atau kaprodinya yang bisa
-        membuatnya; admin tidak punya hak lintas prodi. Tugas bertenggat untuk satu kelas dibuat lewat
-        `POST /kelas/{id}/tugas`.
-      operationId: buatTugas
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BuatTugasRequest'
-      responses:
-        '200':
-          description: successful operation
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    example: 66f0a1b2c3d4e5f678901234
-                  judul:
-                    type: string
-                    example: Tugas Besar Basis Data
-                  prodi_kode:
-                    type: string
-                    example: trpl
-        '401':
-          description: Token tidak valid
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-        '403':
-          description: Bukan dosen, atau bukan pengajar kelas di prodi tugas maupun kaprodinya
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-        '422':
-          description: Validasi gagal (judul/deskripsi tidak sesuai, prodi kosong atau tidak ada di kurikulum)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-      security:
-        - whatsauthToken: []
   /tugas/kiriman/{kid}/berkas:
     get:
       tags:
@@ -4404,9 +4354,10 @@ paths:
       summary: Rapor seluruh semester satu mahasiswa
       description: >-
         Skala huruf A >=80, B >=70, C >=60, D >=50, E <50 dengan bobot 4/3/2/1/0;
-        batas C sama dengan ambang lulus proyek blok (D tidak lulus). Satu nilai
-        per mata kuliah - kalau ada beberapa (mengulang), dipakai yang
-        tertinggi. SKS dan semester dari koleksi matakuliah; nilai berkode yang
+        batas C = ambang lulus 60 (D tidak lulus). Nilai mata kuliah berasal
+        dari nilai akhir kelas yang sudah lengkap (sejak 2026-09-26 satu-satunya
+        sumber; penilaian proyek blok dipensiunkan). Satu nilai per mata kuliah
+        - kalau ada beberapa (mengulang), dipakai yang tertinggi. SKS dan semester dari koleksi matakuliah; nilai berkode yang
         tidak terpetakan ditampilkan terpisah dan tidak masuk IP. Rumpun yang
         diakui lewat RPL disetujui ditampilkan terpisah, tanpa nilai angka.
         Mahasiswa hanya boleh melihat rapornya sendiri; dosen/admin siapa pun.
@@ -4459,15 +4410,14 @@ paths:
         dan semesternya belum terbit, jadi agenda mingguan belum dihitung),
         materi_belum_selesai, kuis_belum_lulus (minggu berjalan kalender
         terbit), proyek_kerja_menunggu, rpl_menunggu;
-        dosen - email_belum_diisi, belum_pengampu (belum dicentang pengampu
-        di prodi mana pun, belum mengajar kelas, dan bukan kaprodi),
-        belum_mengajar_kelas (sudah dicentang pengampu tetapi belum ditunjuk
-        pengajar kelas mana pun), forum_belum_dijawab (prodi mengajar), proyek_kerja_putusan, proyek_kerja_tinjauan, rpl_menunggu,
+        dosen - email_belum_diisi, belum_mengajar_kelas (belum ditunjuk
+        pengajar kelas mana pun dan bukan kaprodi), forum_belum_dijawab
+        (prodi mengajar), proyek_kerja_putusan, proyek_kerja_tinjauan, rpl_menunggu,
         kalender_belum_terbit (akan; prodi mengajar tanpa kalender terbit),
         rekaman_belum_terbit, materi_minggu_depan_kosong,
         kuis_minggu_depan_kosong, ujian_diawasi;
         kaprodi (per prodi yang dipimpin) - kurikulum_belum_lengkap,
-        pengampu_kosong, kalender_belum_terbit, kelas_tanpa_pengajar (kelas
+        kalender_belum_terbit, kelas_tanpa_pengajar (kelas
         kalender terbit yang belum selesai), proyek_kerja_telat,
         forum_lewat_sla;
         admin - prodi_tanpa_kaprodi, rujukan_nip_lama (kaprodi masih
@@ -4477,7 +4427,7 @@ paths:
 
         Urutan: setiap bagian sudah diurutkan dan frontend menampilkannya apa
         adanya. Bagian kaprodi mengikuti ketergantungan pekerjaan - kurikulum,
-        dosen pengampu, kalender, pengajar kelas, lalu laporan (proyek kerja, forum) - bukan
+        kalender, pengajar kelas, lalu laporan (proyek kerja, forum) - bukan
         tanda mendesak. Bagian lain: `perlu` dulu, yang mendesak di depan,
         lalu tenggat terdekat.
       operationId: agendaBeranda
@@ -4512,8 +4462,7 @@ paths:
         bisa ditetapkan), jabatan (admin), kode prodi yang dipimpinnya sebagai
         kaprodi (termasuk rujukan NIP lama yang belum dimigrasi), dan prodi
         mengajarnya. Tanpa nomor WhatsApp dan tanpa NIP.
-        Dipakai halaman Kelola Kaprodi (jabatan.html, admin) dan Dosen Pengampu
-        Prodi (pengampu.html, kaprodi).
+        Dipakai halaman Kelola Kaprodi (jabatan.html, admin).
       operationId: daftarDosenJabatan
       responses:
         '200':
@@ -4535,59 +4484,6 @@ paths:
                 $ref: '#/components/schemas/DetailError'
         '403':
           description: Bukan admin maupun kaprodi
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-      security:
-        - whatsauthToken: []
-  /jabatan/dosen/{email}/prodi:
-    put:
-      tags:
-        - jabatan
-      summary: Atur dosen pengampu prodi (kaprodi, untuk prodinya)
-      description: >-
-        Dosen pengampu prodi. Hanya kaprodi (2026-09-14; admin tidak), dan hanya
-        centang prodi yang dipimpinnya yang berubah - prodi lain milik dosen itu
-        tetap; menambahkan prodi di luar lingkupnya ditolak 403. Setiap kode harus
-        prodi yang ada. Sejak 2026-09-25 centang ini menjadi daftar pilihan
-        pengajar kelas prodi itu (`GET /kelas/pilihan-pengajar`); hak menulis
-        materi, kuis, tugas, dan rekaman ikut kelas yang diajar.
-      operationId: tetapkanProdiDosen
-      parameters:
-        - {in: path, name: email, required: true, schema: {type: string}, description: Email kampus dosen, example: "dosen@digitalbdg.ac.id"}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                prodi_kode: {type: array, items: {type: string}, example: [pai]}
-      responses:
-        '200':
-          description: Prodi mengajar tersimpan
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  email: {type: string}
-                  prodi_kode: {type: array, items: {type: string}}
-        '401':
-          description: Tanpa token, atau token tidak valid/kedaluwarsa
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-        '403':
-          description: Bukan kaprodi, atau menambahkan prodi di luar prodi yang dipimpinnya
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DetailError'
-        '422':
-          description: Prodi tidak ada, atau email bukan milik dosen aktif
           content:
             application/json:
               schema:
@@ -6182,7 +6078,9 @@ paths:
       tags:
         - kelas
       summary: Pilihan pengajar kelas (kaprodi prodi itu)
-      description: Dosen aktif yang dicentang pengampu prodi itu, ditambah kaprodinya. Tanpa nomor WhatsApp.
+      description: >-
+        Semua dosen aktif yang sudah mengisi email kampus (sejak 2026-09-26 tanpa centang pengampu);
+        dosen yang sudah tercatat di prodi itu di atas, lalu urut nama. Tanpa nomor WhatsApp.
       operationId: pilihanPengajarKelas
       parameters:
         - {in: query, name: prodi, required: true, schema: {type: string}, example: trpl, description: Kode prodi}
@@ -6397,7 +6295,8 @@ paths:
       summary: Ubah kelas (kaprodi prodi kelas) - nama, pengajar, peserta manual
       description: >-
         Field yang tidak dikirim (null) tidak diubah. `pengajar` berisi email kampus dosen aktif yang
-        dicentang pengampu prodi itu (atau kaprodinya); `peserta_tambahan` NIM roster prodi itu.
+        sudah mengisi email kampus (dari prodi mana pun) - pengajar otomatis tercatat di prodi kelas itu
+        (`dosentugas.prodi_kode`); `peserta_tambahan` NIM roster prodi itu.
       operationId: ubahKelas
       parameters:
         - {in: path, name: id, required: true, schema: {type: string}, description: "Id kelas (ObjectID) dari `GET /kelas/saya` atau `GET /kelas`."}
@@ -6433,7 +6332,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
-          description: Nama kosong/lebih dari 120 karakter, pengajar bukan pengampu prodi itu (atau belum punya email kampus), atau NIM tidak ada di roster prodi
+          description: Nama kosong/lebih dari 120 karakter, pengajar bukan dosen aktif ber-email, atau NIM tidak ada di roster prodi
           content:
             application/json:
               schema:
@@ -7418,22 +7317,6 @@ components:
           type: string
           format: date-time
           description: Tenggat pengumpulan; tidak ada bila tugas tanpa tenggat
-    BuatTugasRequest:
-      type: object
-      properties:
-        judul:
-          type: string
-          example: Tugas Besar Basis Data
-        deskripsi:
-          type: string
-          example: Kerjakan rancangan ERD dan normalisasi
-        prodi_kode:
-          type: string
-          description: Prodi tugas; harus prodi tempat pembuat mengajar atau yang dipimpinnya
-          example: trpl
-      required:
-        - judul
-        - prodi_kode
     PerKiriman:
       type: object
       properties:
@@ -7558,7 +7441,7 @@ components:
           type: array
           items:
             type: string
-          description: Diisi untuk CPL yang ditopang di luar penilaian proyek blok
+          description: Diisi untuk CPL yang ditopang di luar nilai kelas rumpun
           example: [jalur kontinu, KKN Tematik]
         rumpun_bukti_rpl:
           type: array
@@ -7566,7 +7449,7 @@ components:
             type: string
           description: >-
             Rumpun yang diakui lewat pengajuan RPL yang DISETUJUI dan menyentuh
-            CPL ini. Sengaja dipisah dari rumpun_bukti (nilai proyek blok) karena
+            CPL ini. Sengaja dipisah dari rumpun_bukti (nilai akhir kelas rumpun) karena
             RPL adalah tinjauan dokumen pengalaman kerja lampau, bukan artefak
             yang dinilai - laporan akreditasi harus tetap bisa menjawab CPL ini
             terbukti dari mana.
@@ -7973,7 +7856,7 @@ components:
           description: Dari rumpun mata kuliah ini; kosong kalau prodi belum punya CPL terdaftar
         jumlah_dinilai:
           type: integer
-          description: Mahasiswa berbeda yang punya nilai mata kuliah ini di proyek blok angkatan tersebut
+          description: Mahasiswa berbeda yang punya nilai akhir kelas lengkap untuk mata kuliah ini di angkatan tersebut
         jumlah_lulus:
           type: integer
     LaporanKepatuhan:
@@ -8068,7 +7951,7 @@ components:
           example: 7
         dapat_dinilai:
           type: integer
-          description: total dikurangi ditopang_jalur_lain - jumlah CPL yang memang bisa dibuktikan dari nilai proyek blok
+          description: total dikurangi ditopang_jalur_lain - jumlah CPL yang memang bisa dibuktikan dari nilai kelas rumpun
           example: 10
         ditopang_jalur_lain:
           type: integer
@@ -8078,7 +7961,7 @@ components:
           type: integer
           description: >-
             Berapa dari tercapai yang buktinya SEMATA-MATA RPL, tanpa satu pun
-            nilai proyek blok. Angka yang perlu dilihat asesor sebelum membaca
+            nilai kelas. Angka yang perlu dilihat asesor sebelum membaca
             tercapai sebagai capaian yang dinilai di kelas.
           example: 0
         daftar:
