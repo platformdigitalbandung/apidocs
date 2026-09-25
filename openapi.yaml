@@ -63,8 +63,9 @@ info:
     |---|---|---|
     | mahasiswa | nomor ada di roster `mahasiswa` (tanpa klaim role) | materi, kuis, tugas, forum, nilai, rapor, dasbor, proyek kerja, RPL — hanya prodi rosternya |
     | dosen | `dosentugas` aktif → role `dosen` | membaca semua prodi; roster & email kampus; tinjau RPL, rapor per NIM, pengawas ujian, proyek blok, proyek kerja bimbingan |
-    | dosen pengampu | `dosentugas.prodi_kode` dicentang kaprodi | + menyusun kuis, mengelola materi, membuat tugas, menerbitkan rekaman **untuk prodi itu** |
-    | kaprodi | `prodi.kaprodi_email` → role `kaprodi` | + kurikulum, kalender semester, centang pengampu, laporan tingkat prodi **prodinya** |
+    | dosen pengampu | `dosentugas.prodi_kode` dicentang kaprodi | daftar pilihan pengajar kelas prodi itu (sejak 2026-09-25 centang ini saja tidak memberi hak menulis) |
+    | pengajar kelas | email kampus ada di `kelas.pengajar`, ditunjuk kaprodi | + materi & kuis rumpun/mata kuliah kelas itu, tugas bertenggat, penilaian, bobot & buku nilai, rekaman sesi kalender kelas itu |
+    | kaprodi | `prodi.kaprodi_email` → role `kaprodi` | + kurikulum, kalender semester, centang pengampu, kelola kelas (pengajar, peserta), semua hak pengajar di kelas prodinya, laporan tingkat prodi **prodinya** |
     | admin | `dosentugas.jabatan = "admin"` → role `admin` | menetapkan kaprodi, membuat prodi baru, laporan semua prodi; **tidak** mengubah kurikulum/kalender/kuis/materi/tugas |
 
     Tanpa token → `401`; nomor tidak terdaftar atau peran kurang → `403`;
@@ -97,10 +98,19 @@ info:
     - **Menyiapkan prodi (kaprodi):** `PUT /kurikulum/prodi/{prodi}` → rumpun/CPL
       → `PUT /kurikulum/ritme/{nama}` → `POST /kalender` → `PUT /kalender/{id}`
       → `POST /kalender/{id}/terbitkan` → `PUT /jabatan/dosen/{email}/prodi`
-      (centang pengampu).
-    - **Tugas (dosen pengampu → mahasiswa):** `POST /tugas` (wajib `prodi_kode`)
-      → `GET /tugas` → `POST /tugas/{id}/kirim` (multipart, mahasiswa roster)
-      → `GET /tugas/{id}/laporan` (kemiripan).
+      (centang pengampu) → kelas dibuat otomatis saat kalender terbit →
+      `GET /kelas/pilihan-pengajar` → `PUT /kelas/{id}` (tunjuk pengajar).
+    - **Kelas (sejak 2026-09-25):** `GET /kelas/saya` → `GET /kelas/{id}` →
+      `GET /kelas/{id}/isi` (materi, kuis, tugas per minggu) →
+      `GET /kelas/{id}/nilai` (buku nilai; peserta hanya barisnya).
+    - **Tugas kelas (pengajar → mahasiswa):** `POST /kelas/{id}/tugas`
+      (+ `POST /tugas/{id}/lampiran`) → mahasiswa `GET /tugas/{id}` →
+      `POST /tugas/{id}/kirim` (multipart; lewat tenggat tetap diterima, ditandai
+      terlambat) → `GET /tugas/{id}/kiriman` → `GET /tugas/kiriman/{kid}/berkas`
+      → `PUT /tugas/{id}/kiriman/{kid}/nilai` (`kembalikan: true` memperlihatkan
+      nilai ke mahasiswa dan memasukkannya ke buku nilai) →
+      `GET /tugas/{id}/laporan` (kemiripan). Tugas prodi lama (`POST /tugas`)
+      tetap berlaku.
     - **Materi & kuis mingguan:** `POST /materi` (+ `POST /materi/{id}/berkas`)
       → mahasiswa `GET /materi?rumpun=&minggu=` → `POST /progresmateri`;
       `POST /kuisgerbang` → `GET /kuisgerbang/{rumpun}/{minggu}` →
@@ -136,7 +146,7 @@ info:
   license:
     name: MIT
     url: https://github.com/platformdigitalbandung/apidocs/blob/main/LICENSE
-  version: 1.3.0
+  version: 1.4.0
 externalDocs:
   description: Pedoman proyek, peran, dan konvensi klien (README repo pdb)
   url: https://github.com/platformdigitalbandung/pdb#readme
@@ -221,6 +231,12 @@ tags:
     description: Masuk dengan NIM/email + kata sandi (templat bagian email sebelum @ + ADB) dan ganti kata sandi sendiri
   - name: pengguna
     description: Halaman Pengguna untuk admin dan kaprodi - dosen, mahasiswa, reset kata sandi ke templat, aktif/nonaktif, dan jabatan admin
+  - name: kelas
+    description: >-
+      Kelas sebagai pusat pembelajaran (sejak 2026-09-25, keputusan developer Arfan) - satu kelas per rumpun
+      berproyek pengikat, atau per mata kuliah untuk rumpun wadah mata kuliah lepas, dalam satu kalender
+      semester terbit. Peserta otomatis dari roster (prodi + angkatan + semester), pengajar ditunjuk kaprodi,
+      tugas bertenggat, dan buku nilai berbobot. Hak menulis materi, kuis, tugas, rekaman, dan nilai ikut kelas.
 paths:
   /health:
     # Rute ini ada di AKAR, bukan di bawah /api - server default dokumen ini
@@ -258,9 +274,10 @@ paths:
       summary: Daftar tugas
       description: >-
         Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster). Mahasiswa hanya menerima
-        tugas prodinya di roster (sejak 2026-09-15; query prodi diabaikan, tugas lama tanpa prodi tidak
-        ikut) dan tiap tugas membawa sudah_kirim dan kirim_terakhir miliknya sendiri. Dosen, kaprodi,
-        dan admin menerima semua tugas, bisa disaring dengan query prodi.
+        tugas prodi rosternya yang bukan tugas kelas (sejak 2026-09-15; query prodi diabaikan, tugas lama
+        tanpa prodi tidak ikut) ditambah tugas kelas yang ia ikuti (sejak 2026-09-25), dan tiap tugas
+        membawa sudah_kirim dan kirim_terakhir miliknya sendiri. Dosen, kaprodi, dan admin menerima
+        semua tugas, bisa disaring dengan query prodi.
       operationId: daftarTugas
       security:
         - whatsauthToken: []
@@ -300,8 +317,10 @@ paths:
         - tugas
       summary: Buat tugas baru
       description: >-
-        Tugas wajib milik satu prodi. Hanya dosen pengampu prodi itu (dicentang kaprodi) atau kaprodinya
-        yang bisa membuatnya (keputusan pemilik produk 2026-09-15); admin tidak punya hak lintas prodi.
+        Tugas prodi (jalur lama, tanpa kelas dan tanpa tenggat) - tampil untuk semua mahasiswa roster
+        prodi itu. Sejak 2026-09-25 hanya pengajar kelas di prodi itu atau kaprodinya yang bisa
+        membuatnya; admin tidak punya hak lintas prodi. Tugas bertenggat untuk satu kelas dibuat lewat
+        `POST /kelas/{id}/tugas`.
       operationId: buatTugas
       requestBody:
         content:
@@ -332,13 +351,58 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen, atau bukan pengampu/kaprodi prodi tugas
+          description: Bukan dosen, atau bukan pengajar kelas di prodi tugas maupun kaprodinya
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
           description: Validasi gagal (judul/deskripsi tidak sesuai, prodi kosong atau tidak ada di kurikulum)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /tugas/kiriman/{kid}/berkas:
+    get:
+      tags:
+        - tugas
+      summary: Berkas jawaban satu kiriman (pengajar tugas itu, atau mahasiswa pemiliknya)
+      description: >-
+        Berkas asli dari repo storage privat sebagai base64, beserta teks yang terbaca saat kiriman
+        diekstrak. Kalau berkas tidak bisa diambil dari penyimpanan, `galat_berkas` terisi dan teksnya
+        tetap dikirim.
+      operationId: berkasKiriman
+      parameters:
+        - {in: path, name: kid, required: true, schema: {type: string}, description: "Id kiriman dari `GET /tugas/{id}/kiriman`"}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nama: {type: string, example: jawaban.pdf}
+                  teks: {type: string, description: Teks yang terbaca dari berkas}
+                  n_kata: {type: integer}
+                  isi_base64: {type: string, description: Isi berkas asli; tidak ada kalau berkas tidak tersimpan}
+                  galat_berkas: {type: string, description: Ada kalau berkas gagal diambil dari penyimpanan}
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan pengajar tugas itu maupun kaprodinya, atau kiriman milik mahasiswa lain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kiriman atau tugasnya tidak ditemukan
           content:
             application/json:
               schema:
@@ -352,7 +416,9 @@ paths:
       summary: Detail tugas
       description: >-
         Hanya pengguna terdaftar (dosen/admin atau mahasiswa di roster). Untuk mahasiswa, tugas prodi
-        lain atau tugas lama tanpa prodi dijawab 404.
+        lain, tugas lama tanpa prodi, dan tugas kelas yang tidak ia ikuti dijawab 404. Mahasiswa
+        sekalian menerima `kiriman_saya` (kiriman terakhirnya); nilai dan komentar baru ikut setelah
+        pengajar mengembalikannya.
       operationId: detailTugas
       security:
         - whatsauthToken: []
@@ -381,28 +447,116 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                  judul:
-                    type: string
-                  deskripsi:
-                    type: string
-                  prodi_kode:
-                    type: string
+                $ref: '#/components/schemas/TugasDetail'
         '404':
-          description: Tugas tidak ditemukan (untuk mahasiswa juga tugas prodi lain)
+          description: Tugas tidak ditemukan (untuk mahasiswa juga tugas prodi lain atau kelas yang tidak diikuti)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
+    put:
+      tags:
+        - tugas
+      summary: Ubah tugas (pengajar kelas tugas itu / kaprodinya)
+      description: >-
+        Mengganti judul, petunjuk, minggu, tenggat, dan nilai maksimal. Tugas prodi lama: pengajar
+        kelas di prodi itu atau kaprodinya. Kiriman yang sudah masuk tidak dihitung ulang
+        keterlambatannya.
+      operationId: ubahTugas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "ObjectID tugas"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuatTugasKelasRequest'
+      responses:
+        '200':
+          description: Tugas tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tugas'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan pengajar kelas tugas itu maupun kaprodinya
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Tugas atau kelasnya tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Isian tidak sah (judul kosong, tenggat tidak terbaca, nilai maksimal di luar 1-1000, atau minggu di luar 0-52)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+    delete:
+      tags:
+        - tugas
+      summary: Hapus tugas (pengajar kelas tugas itu / kaprodinya)
+      description: >-
+        Tugas yang sudah punya kiriman butuh `?konfirmasi=hapus`; tanpa itu dijawab 422 beserta
+        jumlah kirimannya. Kiriman mahasiswa tidak ikut terhapus.
+      operationId: hapusTugas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "ObjectID tugas"}
+        - {in: query, name: konfirmasi, required: false, schema: {type: string, enum: [hapus]}, description: "Wajib `hapus` kalau tugas sudah punya kiriman"}
+      responses:
+        '200':
+          description: Terhapus
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+                  kiriman_tertinggal: {type: integer, description: Kiriman yang tetap tersimpan}
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan pengajar kelas tugas itu maupun kaprodinya
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Tugas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Tugas sudah punya kiriman dan konfirmasi belum diberikan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
   /tugas/{id}/kirim:
     post:
       tags:
         - tugas
       summary: Kumpulkan berkas tugas
-      description: Hanya mahasiswa di roster. Nama dan NIM kiriman diambil dari roster lewat nomor WhatsApp di token, bukan dari isian form. Body berupa multipart/form-data berisi berkas.
+      description: Hanya mahasiswa di roster, untuk tugas prodinya atau tugas kelas yang ia ikuti. Nama dan NIM kiriman diambil dari roster lewat nomor WhatsApp di token, bukan dari isian form. Body berupa multipart/form-data berisi berkas. Kiriman ulang menambah versi baru; yang dinilai kiriman terakhir. Kiriman setelah tenggat tetap diterima dan ditandai terlambat.
       operationId: kirimTugas
       security:
         - whatsauthToken: []
@@ -432,7 +586,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Pemegang token bukan mahasiswa di roster (termasuk dosen/admin), atau tugas bukan untuk prodinya
+          description: Pemegang token bukan mahasiswa di roster (termasuk dosen/admin), atau tugas bukan untuk prodinya / kelas yang ia ikuti
           content:
             application/json:
               schema:
@@ -448,6 +602,9 @@ paths:
                     type: string
                   n_kata:
                     type: integer
+                  terlambat:
+                    type: boolean
+                    description: Dikirim setelah tenggat tugas (tetap diterima)
         '404':
           description: Tugas tidak ditemukan
           content:
@@ -489,6 +646,219 @@ paths:
                 $ref: '#/components/schemas/DetailError'
         '404':
           description: Tugas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /tugas/{id}/kiriman:
+    get:
+      tags:
+        - tugas
+      summary: Kiriman per peserta (pengajar kelas tugas itu / kaprodinya)
+      description: >-
+        Kiriman terakhir tiap peserta kelas; peserta yang belum menyerahkan ikut tanpa `kiriman_id`.
+        Kiriman dari NIM yang bukan (lagi) peserta tetap ditampilkan di akhir. Tugas prodi lama: tiap
+        NIM yang pernah mengirim.
+      operationId: kirimanTugas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "ObjectID tugas"}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tugas:
+                    $ref: '#/components/schemas/Tugas'
+                  kiriman:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KirimanPeserta'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan pengajar kelas tugas itu maupun kaprodinya
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Tugas atau kelasnya tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /tugas/{id}/kiriman/{kid}/nilai:
+    put:
+      tags:
+        - tugas
+      summary: Nilai dan komentar satu kiriman (pengajar kelas tugas itu / kaprodinya)
+      description: >-
+        `kembalikan: false` menyimpan draf yang belum terlihat mahasiswa; `kembalikan: true`
+        memperlihatkan nilai dan komentar kepada mahasiswa dan memasukkannya ke buku nilai kelas
+        (nilai / nilai_maks x 100). Nilai 0 sampai nilai maksimal tugas; `null` menghapus nilai
+        (kiriman tanpa nilai tidak ikut dikembalikan walau `kembalikan: true`).
+      operationId: nilaiKiriman
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "ObjectID tugas"}
+        - {in: path, name: kid, required: true, schema: {type: string}, description: "Id kiriman dari `GET /tugas/{id}/kiriman`"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NilaiKirimanRequest'
+      responses:
+        '200':
+          description: Tersimpan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: {type: string}
+                  nilai: {type: number, nullable: true}
+                  komentar: {type: string}
+                  dikembalikan: {type: boolean}
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan pengajar kelas tugas itu maupun kaprodinya
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Tugas atau kiriman tidak ditemukan (termasuk kiriman tugas lain)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Nilai di luar 0 sampai nilai maksimal, atau komentar lebih dari 3000 karakter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /tugas/{id}/lampiran:
+    post:
+      tags:
+        - tugas
+      summary: Unggah lampiran soal (pengajar kelas tugas itu / kaprodinya)
+      description: >-
+        Satu lampiran per tugas; unggah ulang menggantinya. Disimpan di repo storage GitHub privat
+        (`tugas/<id>/soal-<nama>`), maksimal 20 MiB, format pdf, docx, doc, pptx, xlsx, txt, md, zip,
+        png, jpg.
+      operationId: unggahLampiranTugas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "ObjectID tugas"}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [berkas]
+              properties:
+                berkas:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Tersimpan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+                  lampiran_nama: {type: string, example: soal-analisis.pdf}
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan pengajar kelas tugas itu maupun kaprodinya
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Tugas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Berkas tidak ada, melebihi 20 MiB, atau formatnya tidak didukung
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '502':
+          description: Gagal mengunggah ke repo storage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+    get:
+      tags:
+        - tugas
+      summary: Unduh lampiran soal
+      description: Dosen/admin, atau mahasiswa yang boleh mengumpulkan tugas itu. Isi berkas dikirim sebagai base64.
+      operationId: lampiranTugas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "ObjectID tugas"}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nama: {type: string}
+                  isi_base64: {type: string}
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor belum terdaftar sebagai dosen, admin, atau mahasiswa di roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Tugas tidak ditemukan, bukan untuk mahasiswa itu, atau tidak punya lampiran
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '502':
+          description: Lampiran tidak bisa diambil dari repo storage
           content:
             application/json:
               schema:
@@ -2155,7 +2525,7 @@ paths:
     get:
       tags:
         - kuisgerbang
-      summary: Daftar kuis beserta kunci jawaban (dosen, prodi tempat ia mengajar)
+      summary: Daftar kuis beserta kunci jawaban (dosen, prodi tempat ia mengajar atau kelas yang diajarnya)
       description: >-
         Untuk menyusun dan menyunting kuis. Berbeda dari jalur mahasiswa, balasan
         ini memuat `indeks_benar` dan jumlah mahasiswa yang sudah mengerjakan.
@@ -2192,10 +2562,13 @@ paths:
     post:
       tags:
         - kuisgerbang
-      summary: Buat atau ganti kuis satu prodi + rumpun + minggu (dosen/kaprodi untuk prodi tempat ia mengajar)
+      summary: Buat atau ganti kuis satu prodi + rumpun (+ mata kuliah) + minggu (pengajar kelas itu / kaprodinya)
       description: >-
-        Satu kuis per prodi + rumpun + minggu; mengirim kunci yang sama mengganti
-        kuisnya. 1-50 soal, tiap soal 2-6 pilihan, `indeks_benar` (mulai 0) wajib
+        Satu kuis per prodi + rumpun + minggu, atau per prodi + rumpun + `mk_kode` +
+        minggu untuk kelas mata kuliah lepas (sejak 2026-09-25); mengirim kunci yang
+        sama mengganti kuisnya. Hanya pengajar kelas rumpun itu (kelas mata kuliah
+        lepas: hanya mata kuliahnya) atau kaprodinya; `mk_kode` harus mata kuliah
+        rumpun itu. 1-50 soal, tiap soal 2-6 pilihan, `indeks_benar` (mulai 0) wajib
         menunjuk salah satu pilihan, ambang 0-100 (0 = bawaan 60). Rumpun harus ada
         di kurikulum prodi itu. Kuis yang sudah dikerjakan mahasiswa tidak bisa
         diganti (422), karena skor tercatat dihitung dari soal lama.
@@ -2355,6 +2728,7 @@ paths:
       operationId: soalKuisGerbang
       parameters:
         - {in: query, name: prodi, required: false, schema: {type: string}, description: Wajib untuk dosen/admin}
+        - {in: query, name: mk, required: false, schema: {type: string}, description: "Kode mata kuliah untuk kelas mata kuliah lepas (sejak 2026-09-25). Tanpa mk dipakai kuis rumpun, atau satu-satunya kuis minggu itu kalau hanya ada satu"}
         - in: path
           description: Kode rumpun (blok mata kuliah), mis. `R1`; daftar dari `GET /kurikulum/prodi/{prodi}/rumpun`.
           name: rumpun
@@ -2897,14 +3271,16 @@ paths:
     post:
       tags:
         - materi
-      summary: Tambah materi ke katalog (dosen/kaprodi untuk prodi tempat ia mengajar)
+      summary: Tambah materi ke katalog (pengajar kelas rumpun/mata kuliah itu / kaprodinya)
       description: >-
         youtube_id boleh diisi ID 11 karakter atau tautan YouTube apa pun
         (watch, youtu.be, embed, shorts, live) - server mengurainya. Bacaan
         wajib punya isi teks. Jenis berkas dibuat lebih dulu di sini untuk
         mendapat id, berkas PDF-nya menyusul lewat POST /materi/{id}/berkas -
         jadi materi berkas yang baru dibuat belum punya berkas. Field milik
-        jenis lain dikosongkan server.
+        jenis lain dikosongkan server. Sejak 2026-09-25 hanya pengajar kelas
+        rumpun itu (kelas mata kuliah lepas: hanya mata kuliahnya, lewat
+        `mk_kode`) atau kaprodinya; `mk_kode` harus mata kuliah rumpun itu.
       operationId: buatMateri
       requestBody:
         content:
@@ -2945,7 +3321,7 @@ paths:
     put:
       tags:
         - materi
-      summary: Perbarui satu materi (dosen pengampu prodi materi itu / kaprodinya)
+      summary: Perbarui satu materi (pengajar kelas rumpun/mata kuliah materi itu / kaprodinya)
       description: >-
         Mengganti seluruh isi materi; pembuat aslinya dipertahankan. Berkas PDF
         yang sudah diunggah ikut terbawa selama jenisnya tetap `berkas` - body
@@ -3818,9 +4194,9 @@ paths:
         dan sesi bermoda daring_sinkron yang sudah berlangsung. Tenggat =
         tengah malam WIB setelah tanggal sesi; terlambat dicatat saat terbit.
         Satu sesi satu rekaman - terbit kedua ditolak, hapus dulu yang lama.
-        Email kampus pengunggah dari data dosen lewat nomor pada token. Hanya dosen pengampu prodi
-        kalender itu (dicentang kaprodi) atau kaprodinya (keputusan pemilik produk 2026-09-15); prodi
-        dibaca dari kalender tersimpan. Admin tidak punya hak lintas prodi.
+        Email kampus pengunggah dari data dosen lewat nomor pada token. Hanya pengajar kelas pada
+        kalender itu (sejak 2026-09-25) atau kaprodi prodinya; prodi dibaca dari kalender tersimpan.
+        Admin tidak punya hak lintas prodi.
       operationId: terbitkanRekaman
       requestBody:
         required: true
@@ -3937,7 +4313,7 @@ paths:
       tags:
         - rekaman
       summary: Menghapus rekaman
-      description: Aturannya sama dengan menerbitkan - dosen pengampu prodi kalender rekaman itu atau kaprodinya.
+      description: Aturannya sama dengan menerbitkan - pengajar kelas pada kalender rekaman itu atau kaprodinya.
       operationId: hapusRekaman
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}, description: "Id rekaman (ObjectID) dari `GET /rekaman/kalender/{id}`."}
@@ -3958,7 +4334,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Bukan dosen pengampu atau kaprodi prodi kalender rekaman itu
+          description: Bukan pengajar kelas pada kalender rekaman itu maupun kaprodinya
           content:
             application/json:
               schema:
@@ -4081,14 +4457,16 @@ paths:
         dan semesternya belum terbit, jadi agenda mingguan belum dihitung),
         materi_belum_selesai, kuis_belum_lulus (minggu berjalan kalender
         terbit), proyek_kerja_menunggu, rpl_menunggu;
-        dosen - email_belum_diisi, belum_pengampu (belum dicentang mengajar
-        di prodi mana pun dan bukan kaprodi), forum_belum_dijawab (prodi
-        mengajar), proyek_kerja_putusan, proyek_kerja_tinjauan, rpl_menunggu,
+        dosen - email_belum_diisi, belum_pengampu (belum dicentang pengampu
+        di prodi mana pun, belum mengajar kelas, dan bukan kaprodi),
+        belum_mengajar_kelas (sudah dicentang pengampu tetapi belum ditunjuk
+        pengajar kelas mana pun), forum_belum_dijawab (prodi mengajar), proyek_kerja_putusan, proyek_kerja_tinjauan, rpl_menunggu,
         kalender_belum_terbit (akan; prodi mengajar tanpa kalender terbit),
         rekaman_belum_terbit, materi_minggu_depan_kosong,
         kuis_minggu_depan_kosong, ujian_diawasi;
         kaprodi (per prodi yang dipimpin) - kurikulum_belum_lengkap,
-        pengampu_kosong, kalender_belum_terbit, proyek_kerja_telat,
+        pengampu_kosong, kalender_belum_terbit, kelas_tanpa_pengajar (kelas
+        kalender terbit yang belum selesai), proyek_kerja_telat,
         forum_lewat_sla;
         admin - prodi_tanpa_kaprodi, rujukan_nip_lama (kaprodi masih
         memakai data lama karena belum mengisi email kampus),
@@ -4097,7 +4475,7 @@ paths:
 
         Urutan: setiap bagian sudah diurutkan dan frontend menampilkannya apa
         adanya. Bagian kaprodi mengikuti ketergantungan pekerjaan - kurikulum,
-        dosen pengampu, kalender, lalu laporan (proyek kerja, forum) - bukan
+        dosen pengampu, kalender, pengajar kelas, lalu laporan (proyek kerja, forum) - bukan
         tanda mendesak. Bagian lain: `perlu` dulu, yang mendesak di depan,
         lalu tenggat terdekat.
       operationId: agendaBeranda
@@ -4170,8 +4548,9 @@ paths:
         Dosen pengampu prodi. Hanya kaprodi (2026-09-14; admin tidak), dan hanya
         centang prodi yang dipimpinnya yang berubah - prodi lain milik dosen itu
         tetap; menambahkan prodi di luar lingkupnya ditolak 403. Setiap kode harus
-        prodi yang ada. Menentukan prodi mana yang kuis gerbang dan katalog
-        materinya boleh dikelola dosen itu (kaprodi otomatis untuk prodinya).
+        prodi yang ada. Sejak 2026-09-25 centang ini menjadi daftar pilihan
+        pengajar kelas prodi itu (`GET /kelas/pilihan-pengajar`); hak menulis
+        materi, kuis, tugas, dan rekaman ikut kelas yang diajar.
       operationId: tetapkanProdiDosen
       parameters:
         - {in: path, name: email, required: true, schema: {type: string}, description: Email kampus dosen, example: "dosen@digitalbdg.ac.id"}
@@ -5757,6 +6136,596 @@ paths:
                 $ref: '#/components/schemas/DetailError'
       security:
         - whatsauthToken: []
+  /kelas/saya:
+    get:
+      tags:
+        - kelas
+      summary: Kelas saya (mahasiswa, dosen, kaprodi)
+      description: >-
+        Mahasiswa: kelas yang ia ikuti (`peran: peserta`). Dosen: kelas yang diajarnya, ditambah
+        seluruh kelas prodi yang dipimpinnya sebagai kaprodi. Kelas untuk kalender terbit yang belum
+        punya kelas dibuat otomatis lebih dulu.
+      operationId: kelasSaya
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  peran: {type: string, enum: [mahasiswa, dosen]}
+                  email: {type: string, description: Email kampus dosen (hanya dosen)}
+                  kaprodi_prodi: {type: array, items: {type: string}, description: Prodi yang dipimpin (hanya dosen)}
+                  kelas:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KelasRingkas'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor belum terdaftar sebagai dosen atau mahasiswa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /kelas/pilihan-pengajar:
+    get:
+      tags:
+        - kelas
+      summary: Pilihan pengajar kelas (kaprodi prodi itu)
+      description: Dosen aktif yang dicentang pengampu prodi itu, ditambah kaprodinya. Tanpa nomor WhatsApp.
+      operationId: pilihanPengajarKelas
+      parameters:
+        - {in: query, name: prodi, required: true, schema: {type: string}, example: trpl, description: Kode prodi}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dosen:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OrangKelas'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan kaprodi prodi itu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /kelas/otomatis:
+    post:
+      tags:
+        - kelas
+      summary: Buat kelas yang belum ada dari satu kalender terbit (kaprodi)
+      description: >-
+        Satu kelas per rumpun semester itu yang punya proyek pengikat; rumpun wadah tanpa proyek
+        pengikat dipecah satu kelas per mata kuliah. Kelas yang sudah ada tidak digandakan. Kelas juga
+        dibuat otomatis saat `POST /kalender/{id}/terbitkan`.
+      operationId: otomatisKelas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtomatisKelasRequest'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dibuat: {type: integer, description: Jumlah kelas baru}
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan kaprodi prodi kalender itu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kalender tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Kalender belum terbit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /kelas:
+    get:
+      tags:
+        - kelas
+      summary: Kelas satu prodi (kaprodi prodinya, admin semua prodi)
+      description: >-
+        Untuk halaman Kelola Kelas. `prodi` boleh kosong kalau kaprodi hanya memimpin satu prodi.
+        Ikut dikirim kalender terbit prodi itu (pilihan saat menambah kelas manual).
+      operationId: daftarKelas
+      parameters:
+        - {in: query, name: prodi, required: false, schema: {type: string}, example: trpl, description: Kode prodi}
+        - {in: query, name: kalender, required: false, schema: {type: string}, description: Saring per id kalender}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  prodi: {type: string}
+                  kelas:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KelasRingkas'
+                  kalender:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KalenderRingkasKelas'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan kaprodi prodi itu maupun admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+    post:
+      tags:
+        - kelas
+      summary: Tambah kelas manual (kaprodi prodi kalender itu)
+      description: >-
+        Kelas rumpun (tanpa `mk_kode`) atau kelas satu mata kuliah rumpun itu. Satu rumpun/mata kuliah
+        hanya satu kelas per kalender (tidak ada kelas paralel).
+      operationId: buatKelas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuatKelasRequest'
+      responses:
+        '201':
+          description: Kelas dibuat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KelasRingkas'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan kaprodi prodi kalender itu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kalender tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Kalender belum terbit, rumpun/mata kuliah tidak ada, mata kuliah diisi untuk rumpun berproyek pengikat (atau kosong untuk rumpun wadah), atau kelasnya sudah ada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /kelas/{id}:
+    get:
+      tags:
+        - kelas
+      summary: Detail kelas (anggota kelas)
+      description: >-
+        Anggota = peserta, pengajar, kaprodi prodi kelas, atau admin (hanya baca); `peran` menyebut
+        peran pemanggil. Memuat peserta, mata kuliah kelas, dan minggu berjalan kalender.
+      operationId: detailKelas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "Id kelas (ObjectID) dari `GET /kelas/saya` atau `GET /kelas`."}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KelasDetail'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan anggota kelas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kelas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+    put:
+      tags:
+        - kelas
+      summary: Ubah kelas (kaprodi prodi kelas) - nama, pengajar, peserta manual
+      description: >-
+        Field yang tidak dikirim (null) tidak diubah. `pengajar` berisi email kampus dosen aktif yang
+        dicentang pengampu prodi itu (atau kaprodinya); `peserta_tambahan` NIM roster prodi itu.
+      operationId: ubahKelas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "Id kelas (ObjectID) dari `GET /kelas/saya` atau `GET /kelas`."}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UbahKelasRequest'
+      responses:
+        '200':
+          description: Tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KelasRingkas'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan kaprodi prodi kelas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kelas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Nama kosong/lebih dari 120 karakter, pengajar bukan pengampu prodi itu (atau belum punya email kampus), atau NIM tidak ada di roster prodi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+    delete:
+      tags:
+        - kelas
+      summary: Hapus kelas (kaprodi prodi kelas)
+      description: >-
+        Kelas yang sudah punya tugas atau nilai butuh `?konfirmasi=hapus`; tugas dan nilainya tidak
+        ikut terhapus. Kelas otomatis yang dihapus tidak dibuat ulang dengan sendirinya (hanya lewat
+        `POST /kelas/otomatis`).
+      operationId: hapusKelas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "Id kelas (ObjectID) dari `GET /kelas/saya` atau `GET /kelas`."}
+        - {in: query, name: konfirmasi, required: false, schema: {type: string, enum: [hapus]}, description: "Wajib `hapus` kalau kelas sudah punya tugas atau nilai"}
+      responses:
+        '200':
+          description: Terhapus
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+                  tugas_tertinggal: {type: integer}
+                  nilai_tertinggal: {type: integer}
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan kaprodi prodi kelas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kelas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Kelas sudah punya tugas atau nilai dan konfirmasi belum diberikan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /kelas/{id}/isi:
+    get:
+      tags:
+        - kelas
+      summary: Isi kelas per minggu - materi, kuis, tugas (anggota kelas)
+      description: >-
+        Materi dan kuis gerbang rumpun kelas (kelas mata kuliah lepas: hanya yang ber-`mk_kode` mata
+        kuliahnya), dan tugas kelas, dikelompokkan per minggu kalender. Peserta menerima
+        status tugas dan hasil kuisnya sendiri; pengajar menerima jumlah yang sudah menyerahkan/dinilai.
+      operationId: isiKelas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "Id kelas (ObjectID) dari `GET /kelas/saya` atau `GET /kelas`."}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IsiKelas'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan anggota kelas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kelas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /kelas/{id}/tugas:
+    post:
+      tags:
+        - kelas
+      summary: Buat tugas kelas (pengajar kelas / kaprodinya)
+      description: >-
+        Tugas hanya untuk peserta kelas ini. Tenggat opsional (RFC3339, atau `YYYY-MM-DDTHH:MM` yang
+        dibaca WIB); kiriman sesudahnya tetap diterima dan ditandai terlambat. Nilai maksimal bawaan
+        100. Lampiran soal menyusul lewat `POST /tugas/{id}/lampiran`.
+      operationId: buatTugasKelas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "Id kelas (ObjectID) dari `GET /kelas/saya` atau `GET /kelas`."}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuatTugasKelasRequest'
+      responses:
+        '201':
+          description: Tugas dibuat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tugas'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan pengajar kelas maupun kaprodinya
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kelas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Judul kosong, tenggat tidak terbaca, nilai maksimal di luar 1-1000, atau minggu di luar 0-52
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /kelas/{id}/bobot:
+    put:
+      tags:
+        - kelas
+      summary: Atur komponen dan bobot nilai kelas (pengajar kelas / kaprodinya)
+      description: >-
+        1-10 komponen, kunci unik `[a-z0-9_]`, jenis `tugas` (rata-rata tugas kelas), `kuis` (rata-rata
+        kuis gerbang kelas), atau `manual` (diisi pengajar); `tugas` dan `kuis` masing-masing paling
+        banyak satu; tiap bobot > 0 dan jumlahnya tepat 100. Bawaan kelas rumpun: hasil proyek 40,
+        ujian 30, kuis 15, presentasi 15; kelas mata kuliah lepas: tugas 40, kuis 20, ujian 40.
+      operationId: bobotKelas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "Id kelas (ObjectID) dari `GET /kelas/saya` atau `GET /kelas`."}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BobotKelasRequest'
+      responses:
+        '200':
+          description: Tersimpan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bobot:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KomponenBobot'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan pengajar kelas maupun kaprodinya
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kelas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Bobot tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /kelas/{id}/nilai:
+    get:
+      tags:
+        - kelas
+      summary: Buku nilai kelas
+      description: >-
+        Pengajar, kaprodi, dan admin melihat semua peserta; peserta hanya barisnya sendiri (tanpa
+        catatan pengajar). Tugas dihitung dari kiriman yang sudah dikembalikan (belum menyerahkan
+        padahal tenggat lewat = 0); kuis dari skor kuis gerbang (minggu yang sudah lewat tanpa
+        mengerjakan = 0). Nilai akhir hanya ada kalau semua komponen punya nilai, dan masuk rapor untuk
+        setiap mata kuliah kelas itu.
+      operationId: nilaiKelas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "Id kelas (ObjectID) dari `GET /kelas/saya` atau `GET /kelas`."}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BukuNilaiKelas'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan anggota kelas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kelas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /kelas/{id}/nilai/{nim}:
+    put:
+      tags:
+        - kelas
+      summary: Simpan nilai komponen manual satu peserta (pengajar kelas / kaprodinya)
+      description: >-
+        Hanya komponen berjenis `manual`; nilai 0-100, `null` menghapus nilai komponen itu. NIM harus
+        peserta kelas.
+      operationId: simpanNilaiKelas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "Id kelas (ObjectID) dari `GET /kelas/saya` atau `GET /kelas`."}
+        - {in: path, name: nim, required: true, schema: {type: string}, description: NIM peserta}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NilaiManualRequest'
+      responses:
+        '200':
+          description: Tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NilaiKelas'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan pengajar kelas maupun kaprodinya
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kelas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Komponen bukan manual, nilai di luar 0-100, atau NIM bukan peserta kelas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
 components:
   schemas:
     JID:
@@ -6021,6 +6990,237 @@ components:
         detail:
           type: string
           example: Tugas tidak ditemukan
+    Tugas:
+      description: Dokumen tugas. Tugas kelas punya `kelas_id`; tugas prodi lama tidak.
+      type: object
+      properties:
+        id: {type: string}
+        judul: {type: string, example: Analisis pesaing}
+        deskripsi: {type: string}
+        prodi_kode: {type: string, example: trpl}
+        kelas_id: {type: string}
+        minggu: {type: integer, description: Minggu kalender kelas; 0/tidak ada = tidak disebut}
+        tenggat: {type: string, format: date-time}
+        nilai_maks: {type: number, description: Skala nilai tugas (bawaan 100)}
+        lampiran_nama: {type: string, description: "Nama lampiran soal; unduh lewat GET /tugas/{id}/lampiran"}
+        dibuat_oleh: {type: string, description: Email kampus pembuat}
+        dibuat: {type: string, format: date-time}
+    TugasDetail:
+      description: Balasan GET /tugas/{id}.
+      type: object
+      properties:
+        id: {type: string}
+        judul: {type: string}
+        deskripsi: {type: string}
+        prodi_kode: {type: string}
+        kelas_id: {type: string, description: Hanya tugas kelas}
+        kelas_nama: {type: string, description: Hanya tugas kelas}
+        minggu: {type: integer}
+        tenggat: {type: string, format: date-time, nullable: true}
+        nilai_maks: {type: number}
+        lampiran_nama: {type: string}
+        kiriman_saya:
+          type: object
+          description: Hanya untuk mahasiswa yang sudah mengirim
+          properties:
+            dikirim: {type: string, format: date-time}
+            filename: {type: string}
+            terlambat: {type: boolean}
+            jumlah_kirim: {type: integer}
+            dikembalikan: {type: boolean}
+            nilai: {type: number, nullable: true, description: Hanya setelah dikembalikan}
+            komentar: {type: string, description: Hanya setelah dikembalikan}
+    BuatTugasKelasRequest:
+      type: object
+      required: [judul]
+      properties:
+        judul: {type: string, maxLength: 200, example: Analisis pesaing}
+        deskripsi: {type: string, maxLength: 5000, example: Bandingkan tiga pesaing dalam tabel.}
+        minggu: {type: integer, description: "Minggu kalender kelas (opsional)", example: 3}
+        tenggat: {type: string, description: "RFC3339, atau YYYY-MM-DDTHH:MM (WIB); kosong = tanpa tenggat", example: "2026-12-01T23:59"}
+        nilai_maks: {type: number, description: "1-1000; 0/kosong = 100", example: 100}
+    NilaiKirimanRequest:
+      type: object
+      properties:
+        nilai: {type: number, nullable: true, description: "0 sampai nilai maksimal tugas; null menghapus nilai"}
+        komentar: {type: string, maxLength: 3000}
+        kembalikan: {type: boolean, description: "true = nilai dan komentar terlihat mahasiswa dan masuk buku nilai"}
+    KirimanPeserta:
+      description: Kiriman terakhir satu peserta untuk satu tugas; tanpa kiriman_id = belum menyerahkan.
+      type: object
+      properties:
+        nim: {type: string}
+        nama: {type: string}
+        kiriman_id: {type: string}
+        filename: {type: string}
+        dikirim: {type: string, format: date-time}
+        jumlah_kirim: {type: integer}
+        terlambat: {type: boolean}
+        nilai: {type: number, nullable: true}
+        komentar: {type: string}
+        dikembalikan: {type: boolean}
+        ada_berkas: {type: boolean, description: Berkas asli tersimpan di repo storage}
+    KomponenBobot:
+      type: object
+      required: [kunci, nama, jenis, bobot]
+      properties:
+        kunci: {type: string, pattern: '^[a-z0-9_]+$', example: ujian}
+        nama: {type: string, example: Ujian}
+        jenis: {type: string, enum: [tugas, kuis, manual]}
+        bobot: {type: number, description: Persen; jumlah semua komponen tepat 100, example: 30}
+    Kelas:
+      description: >-
+        Dokumen koleksi `kelas`. Satu kelas = satu rumpun berproyek pengikat, atau satu mata kuliah
+        (`mk_kode`) rumpun wadah, pada satu kalender semester terbit.
+      type: object
+      properties:
+        id: {type: string}
+        prodi_kode: {type: string, example: trpl}
+        rumpun_kode: {type: string, example: R1}
+        mk_kode: {type: string, description: Hanya kelas mata kuliah lepas}
+        nama: {type: string, example: R1 Literasi & Wirausaha Digital}
+        kalender_id: {type: string}
+        angkatan: {type: string, example: "2026"}
+        semester: {type: integer, example: 1}
+        periode: {type: string, example: Ganjil 2026/2027}
+        pengajar: {type: array, items: {type: string}, description: Email kampus pengajar}
+        peserta_tambahan: {type: array, items: {type: string}, description: NIM di luar peserta otomatis}
+        peserta_keluar: {type: array, items: {type: string}, description: NIM peserta otomatis yang dikeluarkan}
+        bobot: {type: array, items: {$ref: '#/components/schemas/KomponenBobot'}}
+        otomatis: {type: boolean, description: Dibuat otomatis dari kalender terbit}
+        dibuat: {type: string, format: date-time}
+    OrangKelas:
+      type: object
+      properties:
+        nama: {type: string}
+        email: {type: string, description: Pengajar}
+        nim: {type: string, description: Peserta}
+        status: {type: string, description: Peserta - status roster}
+        sumber: {type: string, enum: [roster, tambahan], description: Peserta}
+    KelasRingkas:
+      allOf:
+        - $ref: '#/components/schemas/Kelas'
+        - type: object
+          properties:
+            rumpun_nama: {type: string}
+            mk_nama: {type: string}
+            prodi_nama: {type: string}
+            pengajar_orang: {type: array, items: {$ref: '#/components/schemas/OrangKelas'}}
+            jumlah_peserta: {type: integer}
+            peran: {type: string, enum: [peserta, pengajar, kaprodi, admin], description: Peran pemanggil di kelas ini (admin hanya baca)}
+    KelasDetail:
+      allOf:
+        - $ref: '#/components/schemas/KelasRingkas'
+        - type: object
+          properties:
+            peserta: {type: array, items: {$ref: '#/components/schemas/OrangKelas'}}
+            mata_kuliah: {type: array, items: {$ref: '#/components/schemas/MataKuliah'}}
+            minggu_awal: {type: string, format: date-time, description: Senin minggu 1 kalender}
+            jumlah_minggu: {type: integer}
+            minggu_ini: {type: integer, description: 0 = di luar rentang kalender}
+    KalenderRingkasKelas:
+      type: object
+      properties:
+        id: {type: string}
+        angkatan: {type: string}
+        semester: {type: integer}
+        periode: {type: string}
+    KuisKelas:
+      type: object
+      properties:
+        id: {type: string}
+        minggu: {type: integer}
+        mk_kode: {type: string}
+        jumlah_soal: {type: integer}
+        ambang_lulus: {type: number}
+        skor: {type: number, description: Hasil pemanggil (peserta) bila sudah mengerjakan}
+        lulus: {type: boolean}
+        dikerjakan: {type: integer, description: Untuk pengajar - peserta yang sudah mengerjakan}
+    TugasKelas:
+      allOf:
+        - $ref: '#/components/schemas/Tugas'
+        - type: object
+          properties:
+            status: {type: string, enum: [ditugaskan, diserahkan, terlambat, dinilai], description: Hanya untuk peserta}
+            kirim_terakhir: {type: string, format: date-time}
+            nilai: {type: number, description: Hanya setelah dikembalikan}
+            komentar: {type: string, description: Hanya setelah dikembalikan}
+            diserahkan: {type: integer, description: Untuk pengajar}
+            dinilai: {type: integer, description: Untuk pengajar - sudah dikembalikan}
+    MingguKelas:
+      type: object
+      properties:
+        minggu: {type: integer}
+        mulai: {type: string, format: date-time}
+        materi: {type: array, items: {$ref: '#/components/schemas/Materi'}}
+        kuis: {type: array, items: {$ref: '#/components/schemas/KuisKelas'}}
+        tugas: {type: array, items: {$ref: '#/components/schemas/TugasKelas'}}
+    IsiKelas:
+      type: object
+      properties:
+        kelas_id: {type: string}
+        peran: {type: string}
+        minggu: {type: array, items: {$ref: '#/components/schemas/MingguKelas'}}
+        tugas_tanpa_minggu: {type: array, items: {$ref: '#/components/schemas/TugasKelas'}}
+    BarisNilaiKelas:
+      type: object
+      properties:
+        nim: {type: string}
+        nama: {type: string}
+        komponen: {type: object, additionalProperties: {type: number, nullable: true}, description: Nilai per kunci komponen; null = belum ada}
+        tugas: {type: object, additionalProperties: {type: number, nullable: true}, description: Nilai 0-100 per id tugas}
+        nilai_akhir: {type: number, nullable: true, description: null kalau ada komponen yang belum lengkap}
+        sementara: {type: number, description: Dari komponen yang sudah ada saja}
+        huruf: {type: string, example: A}
+        lengkap: {type: boolean}
+        catatan: {type: string, description: Tidak dikirim ke peserta}
+    BukuNilaiKelas:
+      type: object
+      properties:
+        kelas_id: {type: string}
+        komponen: {type: array, items: {$ref: '#/components/schemas/KomponenBobot'}}
+        tugas: {type: array, items: {$ref: '#/components/schemas/Tugas'}}
+        baris: {type: array, items: {$ref: '#/components/schemas/BarisNilaiKelas'}}
+        catatan: {type: array, items: {type: string}}
+    NilaiKelas:
+      type: object
+      properties:
+        id: {type: string}
+        kelas_id: {type: string}
+        nim: {type: string}
+        komponen: {type: object, additionalProperties: {type: number}}
+        catatan: {type: string}
+        diperbarui: {type: string, format: date-time}
+    BuatKelasRequest:
+      type: object
+      required: [kalender_id, rumpun_kode]
+      properties:
+        kalender_id: {type: string}
+        rumpun_kode: {type: string, example: R3}
+        mk_kode: {type: string, description: Kosong = kelas rumpun}
+        nama: {type: string, description: Kosong = nama bawaan}
+    OtomatisKelasRequest:
+      type: object
+      required: [kalender_id]
+      properties:
+        kalender_id: {type: string}
+    UbahKelasRequest:
+      type: object
+      properties:
+        nama: {type: string, nullable: true}
+        pengajar: {type: array, nullable: true, items: {type: string}, description: Email kampus; menggantikan seluruh daftar}
+        peserta_tambahan: {type: array, nullable: true, items: {type: string}}
+        peserta_keluar: {type: array, nullable: true, items: {type: string}}
+    BobotKelasRequest:
+      type: object
+      required: [bobot]
+      properties:
+        bobot: {type: array, items: {$ref: '#/components/schemas/KomponenBobot'}}
+    NilaiManualRequest:
+      type: object
+      properties:
+        komponen: {type: object, additionalProperties: {type: number, nullable: true}, example: {ujian: 85}}
+        catatan: {type: string}
     TugasRingkas:
       type: object
       properties:
@@ -6045,6 +7245,13 @@ components:
           type: string
           format: date-time
           description: Waktu kiriman terakhir mahasiswa pemegang token untuk tugas ini; hanya ada bila sudah_kirim true.
+        kelas_id:
+          type: string
+          description: Kelas pemilik tugas (sejak 2026-09-25); tidak ada untuk tugas prodi lama
+        tenggat:
+          type: string
+          format: date-time
+          description: Tenggat pengumpulan; tidak ada bila tugas tanpa tenggat
     BuatTugasRequest:
       type: object
       properties:
@@ -6244,8 +7451,8 @@ components:
         15% menurut kurikulum dan tidak diatur di sini.
       properties:
         id: {type: string}
-        tes_dosen: {type: number, description: Porsi dari rasio tes dosen yang lulus, 0..1, example: 0.7}
-        coverage: {type: number, description: Porsi dari persen baris ter-cover, 0..1, example: 0.3}
+        tes_dosen: {type: number, description: "Porsi dari rasio tes dosen yang lulus, 0..1", example: 0.7}
+        coverage: {type: number, description: "Porsi dari persen baris ter-cover, 0..1", example: 0.3}
         diperbarui: {type: string, format: date-time}
         diubah_oleh: {type: string, description: Email kampus dosen yang terakhir mengubah - snapshot pelaku}
     BobotAutograderRequest:
@@ -6768,6 +7975,9 @@ components:
         rumpun_kode:
           type: string
           example: R1
+        mk_kode:
+          type: string
+          description: Mata kuliah untuk kuis kelas mata kuliah lepas (sejak 2026-09-25); kosong = kuis rumpun
         minggu:
           type: integer
           example: 3
@@ -6788,9 +7998,10 @@ components:
         id: {type: string, readOnly: true}
         prodi_kode: {type: string, example: pai}
         rumpun_kode: {type: string, example: R1}
+        mk_kode: {type: string, description: "Opsional - mata kuliah rumpun itu, untuk kelas mata kuliah lepas (sejak 2026-09-25)"}
         minggu: {type: integer, example: 2}
         ambang_lulus: {type: number, example: 70, description: 0 berarti bawaan 60}
-        dibuat_oleh: {type: string, readOnly: true, description: Email kampus penyusun/penyunting terakhir, atau "wa:<nomor>" bila email kosong}
+        dibuat_oleh: {type: string, readOnly: true, description: "Email kampus penyusun/penyunting terakhir, atau wa:<nomor> bila email kosong"}
         dikerjakan: {type: integer, readOnly: true, description: Jumlah mahasiswa yang sudah mengerjakan}
         soal:
           type: array
@@ -7374,6 +8585,10 @@ components:
         rumpun_kode:
           type: string
           example: R1
+        mk_kode:
+          type: string
+          description: Mata kuliah untuk materi kelas mata kuliah lepas (sejak 2026-09-25); kosong = materi seluruh rumpun
+          example: MKU101
         minggu:
           type: integer
           example: 3
@@ -7431,6 +8646,10 @@ components:
         rumpun_kode:
           type: string
           example: R1
+        mk_kode:
+          type: string
+          description: Opsional - mata kuliah rumpun itu, untuk kelas mata kuliah lepas
+          example: MKU101
         minggu:
           type: integer
           minimum: 1
@@ -7722,6 +8941,9 @@ components:
           type: array
           items: {type: string}
           description: Kode prodi yang dipimpin sebagai kaprodi
+        jumlah_kelas_diajar:
+          type: integer
+          description: Kelas yang pengajarnya memuat email dosen ini (sejak 2026-09-25; hanya dosen)
         peran:
           type: string
           enum: [dosen, mahasiswa]
@@ -7903,21 +9125,6 @@ components:
         - nim
         - kode_mk
         - komponen
-  requestBodies:
-    TextMessageReq:
-      description: Kirim Pesan teks
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/TextMessage'
-    TextMessageResp:
-      description: Respon dari request
-      content:
-        application/json:
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/TextMessageResponse'
     MasukSandiRequest:
       type: object
       required:
@@ -8074,6 +9281,21 @@ components:
         pada:
           type: string
           format: date-time
+  requestBodies:
+    TextMessageReq:
+      description: Kirim Pesan teks
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TextMessage'
+    TextMessageResp:
+      description: Respon dari request
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/TextMessageResponse'
   securitySchemes:
     token:
       type: apiKey
