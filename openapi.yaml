@@ -145,7 +145,7 @@ info:
   license:
     name: MIT
     url: https://github.com/platformdigitalbandung/apidocs/blob/main/LICENSE
-  version: 1.6.0
+  version: 1.7.0
 externalDocs:
   description: Pedoman proyek, peran, dan konvensi klien (README repo pdb)
   url: https://github.com/platformdigitalbandung/pdb#readme
@@ -7121,6 +7121,8 @@ components:
         angkatan: {type: string, example: "2026"}
         semester: {type: integer, example: 1}
         periode: {type: string, example: Ganjil 2026/2027}
+        minggu_mulai: {type: integer, example: 9, description: "Sistem blok: minggu kalender pertama kelas ini. Tidak ada = seluruh minggu kalender"}
+        minggu_selesai: {type: integer, example: 16, description: "Sistem blok: minggu kalender terakhir kelas ini"}
         pengajar: {type: array, items: {type: string}, description: Email kampus pengajar}
         peserta_tambahan: {type: array, items: {type: string}, description: NIM di luar peserta otomatis}
         peserta_keluar: {type: array, items: {type: string}, description: NIM peserta otomatis yang dikeluarkan}
@@ -7215,8 +7217,9 @@ components:
     MingguKelas:
       type: object
       properties:
-        minggu: {type: integer}
+        minggu: {type: integer, description: Nomor minggu kalender}
         mulai: {type: string, format: date-time}
+        di_luar_blok: {type: boolean, description: "Minggu di luar rentang minggu_mulai–minggu_selesai kelas yang tetap tampil karena sudah berisi"}
         materi: {type: array, items: {$ref: '#/components/schemas/Materi'}}
         kuis: {type: array, items: {$ref: '#/components/schemas/KuisKelas'}}
         tugas: {type: array, items: {$ref: '#/components/schemas/TugasKelas'}}
@@ -7276,6 +7279,8 @@ components:
         pengajar: {type: array, nullable: true, items: {type: string}, description: Email kampus; menggantikan seluruh daftar}
         peserta_tambahan: {type: array, nullable: true, items: {type: string}}
         peserta_keluar: {type: array, nullable: true, items: {type: string}}
+        minggu_mulai: {type: integer, nullable: true, description: "Dikirim bersama minggu_selesai; 0 dan 0 = seluruh minggu kalender"}
+        minggu_selesai: {type: integer, nullable: true, description: Tidak boleh melewati jumlah minggu kalender kelas}
     BobotKelasRequest:
       type: object
       required: [bobot]
