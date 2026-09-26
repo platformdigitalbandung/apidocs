@@ -5482,7 +5482,8 @@ paths:
       description: >-
         Menukar NIM (mahasiswa) atau email (dosen, atau email roster mahasiswa) +
         kata sandi menjadi token 18 jam yang sama dengan WhatsAuth: Id = nomor
-        WhatsApp di data pengguna, role dari basis data. Email dicari di dosen
+        WhatsApp di data pengguna (mahasiswa yang belum punya nomor di roster:
+        `nim:<NIM>`, sejak 2026-09-26), role dari basis data. Email dicari di dosen
         lebih dulu, lalu di roster; tidak peka huruf besar/kecil. Kata sandi yang
         belum pernah diganti = templat (bagian email sebelum @ + ADB; mahasiswa
         tanpa email NIM + ADB). Akun tidak ditemukan dan kata sandi salah dijawab
