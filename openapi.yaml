@@ -145,7 +145,7 @@ info:
   license:
     name: MIT
     url: https://github.com/platformdigitalbandung/apidocs/blob/main/LICENSE
-  version: 1.7.0
+  version: 1.8.0
 externalDocs:
   description: Pedoman proyek, peran, dan konvensi klien (README repo pdb)
   url: https://github.com/platformdigitalbandung/pdb#readme
@@ -4408,8 +4408,10 @@ paths:
         Jenis butir per peran:
         mahasiswa - kalender_belum_terbit (akan; kalender prodi, angkatan,
         dan semesternya belum terbit, jadi agenda mingguan belum dihitung),
-        materi_belum_selesai, kuis_belum_lulus (minggu berjalan kalender
-        terbit), proyek_kerja_menunggu, rpl_menunggu;
+        materi_belum_selesai, kuis_belum_lulus (satu butir per kelas yang
+        diikuti, minggu berjalan menurut tanggal WIB di kalender kelas itu dan
+        di dalam blok minggunya; kelas_id/kelas_nama terisi),
+        proyek_kerja_menunggu, rpl_menunggu;
         dosen - email_belum_diisi, belum_mengajar_kelas (belum ditunjuk
         pengajar kelas mana pun dan bukan kaprodi), forum_belum_dijawab
         (prodi mengajar), proyek_kerja_putusan, proyek_kerja_tinjauan, rpl_menunggu,
@@ -7777,6 +7779,8 @@ components:
         prodi_kode: {type: string}
         tenggat: {type: string, format: date-time}
         mendesak: {type: boolean, description: Sudah lewat tenggat atau SLA}
+        kelas_id: {type: string, description: 'Kelas pemilik butir (materi_belum_selesai dan kuis_belum_lulus mahasiswa: satu butir per kelas)'}
+        kelas_nama: {type: string, description: Nama kelas pemilik butir}
     AgendaBeranda:
       type: object
       properties:

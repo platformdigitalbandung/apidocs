@@ -29,6 +29,7 @@ Dokumentasi API backend `https://apk.fly.dev`, di-serve lewat GitHub Pages di
 
 | Versi | Tanggal | Backend (`/api/version`) | Catatan |
 |---|---|---|---|
+| 1.8.0 | 2026-09-28 | `apkflydev` `154774d` | `ButirAgenda`: `kelas_id`, `kelas_nama` — materi_belum_selesai dan kuis_belum_lulus mahasiswa satu butir per kelas; minggu berjalan menurut tanggal WIB; tanpa rute baru |
 | 1.7.0 | 2026-09-26 | `apkflydev` `40915ad` | Sistem blok: `minggu_mulai`/`minggu_selesai` di `Kelas` dan `UbahKelasRequest` (`PUT /kelas/{id}`, 0 dan 0 menghapus rentang), `di_luar_blok` di `MingguKelas`; tanpa rute baru |
 | 1.6.0 | 2026-09-26 | `apkflydev` `101aa10` | Alur baru LMS (keputusan developer Arfan 2026-09-26): `POST /tugas` (tugas prodi) dan `PUT /jabatan/dosen/{email}/prodi` (centang pengampu) dihapus; pilihan pengajar = semua dosen aktif ber-email; rapor, CPL, dan kepatuhan hanya dari nilai kelas; tag proyekblok dipensiunkan; 107 path, 135 operasi, 136 skema |
 | 1.5.0 | 2026-09-25 | `apkflydev` `a7bcddb` | Pengumuman kelas (`/kelas/{id}/pengumuman`, opsi kirim ke grup WhatsApp kelas), `grup_wa` di detail kelas (grup WhatsApp per kelas); 3 operasi baru, 108 path, 137 skema |
