@@ -117,6 +117,10 @@ info:
       → mahasiswa `GET /materi?rumpun=&minggu=` → `POST /progresmateri`;
       `POST /kuisgerbang` → `GET /kuisgerbang/{rumpun}/{minggu}` →
       `POST /kuisgerbang/{id}/submit` → `GET /mahasiswa/{nim}/kuisgerbang/status`.
+      Sejak 2026-09-29 materi dan kuis satu minggu terbuka bagi mahasiswa pukul
+      00.00 WIB hari asinkron kelasnya (`hari_asinkron`: Senin/Selasa kelas mata
+      kuliah lepas, Rabu kelas rumpun; `PUT /kelas/{id}`), dan ketepatannya
+      dinilai `GET /kelas/{id}/ketepatan`.
     - **Autograder:** GitHub Actions (`pull_request_target`, binari repo
       `telemetri`) → `POST /autograder/webhook` (HMAC `X-Hub-Signature-256`,
       event `workflow_run`; 202 diabaikan, 401 tanda tangan salah, 503 secret
@@ -148,7 +152,7 @@ info:
   license:
     name: MIT
     url: https://github.com/platformdigitalbandung/apidocs/blob/main/LICENSE
-  version: 1.8.0
+  version: 1.9.0
 externalDocs:
   description: Pedoman proyek, peran, dan konvensi klien (README repo pdb)
   url: https://github.com/platformdigitalbandung/pdb#readme
@@ -2652,7 +2656,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Kuis milik prodi lain
+          description: >-
+            Kuis milik prodi lain, atau (sejak 2026-09-29) hari asinkron kelasnya
+            pada minggu kuis itu belum tiba — `detail` berawalan "Belum dibuka:"
           content:
             application/json:
               schema:
@@ -2705,6 +2711,15 @@ paths:
                 $ref: '#/components/schemas/KuisGerbang'
         '401':
           description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: >-
+            Mahasiswa: hari asinkron kelasnya pada minggu itu belum tiba (sejak
+            2026-09-29). `detail` berawalan "Belum dibuka:" dan menyebut hari,
+            tanggal, dan pukul 00.00 WIB saat terbuka.
           content:
             application/json:
               schema:
@@ -3167,7 +3182,9 @@ paths:
         Mahasiswa hanya melihat materi PRODINYA SENDIRI - query `prodi` yang
         dikirim diabaikan untuk mereka, pola yang sama dengan `nim` pada daftar
         autograder. Dosen dan admin melihat seluruh prodi dan boleh menyaring
-        lewat query.
+        lewat query. Bagi mahasiswa (sejak 2026-09-29), materi yang hari
+        asinkron kelasnya pada minggu itu belum tiba tampil `terkunci: true`
+        tanpa `youtube_id`, `isi`, dan berkas, beserta `dibuka`.
       operationId: daftarMateri
       parameters:
         - in: query
@@ -3514,7 +3531,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '403':
-          description: Materi milik prodi lain, atau pembaca bukan dosen/admin/mahasiswa di roster
+          description: >-
+            Materi milik prodi lain, pembaca bukan dosen/admin/mahasiswa di
+            roster, atau (mahasiswa, sejak 2026-09-29) hari asinkron kelasnya
+            belum tiba — `detail` berawalan "Belum dibuka:"
           content:
             application/json:
               schema:
@@ -3566,6 +3586,15 @@ paths:
                 $ref: '#/components/schemas/ProgresMateri'
         '401':
           description: Token WhatsAuth tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: >-
+            Mahasiswa: hari asinkron kelasnya pada minggu itu belum tiba (sejak
+            2026-09-29). `detail` berawalan "Belum dibuka:" dan menyebut hari,
+            tanggal, dan pukul 00.00 WIB saat terbuka.
           content:
             application/json:
               schema:
@@ -6591,6 +6620,9 @@ paths:
         Materi dan kuis gerbang rumpun kelas (kelas mata kuliah lepas: hanya yang ber-`mk_kode` mata
         kuliahnya), dan tugas kelas, dikelompokkan per minggu kalender. Peserta menerima
         status tugas dan hasil kuisnya sendiri; pengajar menerima jumlah yang sudah menyerahkan/dinilai.
+        Tiap minggu membawa `dibuka` (00.00 WIB hari asinkron kelas); bagi peserta, minggu yang
+        harinya belum tiba bertanda `terkunci` dan materinya tanpa tautan video, isi, dan berkas
+        (sejak 2026-09-29).
       operationId: isiKelas
       parameters:
         - {in: path, name: id, required: true, schema: {type: string}, description: "Id kelas (ObjectID) dari `GET /kelas/saya` atau `GET /kelas`."}
@@ -6601,6 +6633,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IsiKelas'
+        '401':
+          description: Tanpa token, atau token tidak valid/kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Bukan anggota kelas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '404':
+          description: Kelas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /kelas/{id}/ketepatan:
+    get:
+      tags:
+        - kelas
+      summary: Ketepatan belajar per hari asinkron (anggota kelas)
+      description: >-
+        Keputusan developer Arfan 2026-09-29. Tiap materi kelas pada minggu dalam blok kelas yang
+        hari asinkronnya sudah tiba (dan tidak sebelum `berlaku_sejak`) dinilai per peserta: tuntas
+        (100%) paling lambat 23.59 WIB hari itu = `tepat`; tuntas sesudahnya = `terlambat`; belum
+        tuntas padahal harinya lewat = `belum` (keduanya jadi catatan); materi yang diunggah
+        pada/sesudah 00.00 hari itu (`dosen_telat`) atau hari jadwal sebelum mahasiswa masuk roster
+        (`baru_terdaftar`) tidak menimbulkan catatan. Peserta hanya menerima barisnya sendiri;
+        pengajar, kaprodi, dan admin semua peserta beserta daftar `materi` dan waktu terbitnya.
+        Padanan WhatsApp: `catatan belajar`.
+      operationId: ketepatanKelas
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string}, description: "Id kelas (ObjectID) dari `GET /kelas/saya` atau `GET /kelas`."}
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KetepatanKelas'
         '401':
           description: Tanpa token, atau token tidak valid/kedaluwarsa
           content:
@@ -7185,6 +7261,7 @@ components:
         periode: {type: string, example: Ganjil 2026/2027}
         minggu_mulai: {type: integer, example: 9, description: "Sistem blok: minggu kalender pertama kelas ini. Tidak ada = seluruh minggu kalender"}
         minggu_selesai: {type: integer, example: 16, description: "Sistem blok: minggu kalender terakhir kelas ini"}
+        hari_asinkron: {type: string, enum: [Senin, Selasa, Rabu], example: Rabu, description: "Hari belajar asinkron (sejak 2026-09-29): materi dan kuis tiap minggu terbuka bagi mahasiswa pukul 00.00 WIB hari itu. Bawaan Rabu untuk kelas rumpun, Senin/Selasa bergiliran untuk kelas mata kuliah lepas; balasan daftar/detail kelas selalu berisi hari efektif"}
         pengajar: {type: array, items: {type: string}, description: Email kampus pengajar}
         peserta_tambahan: {type: array, items: {type: string}, description: NIM di luar peserta otomatis}
         peserta_keluar: {type: array, items: {type: string}, description: NIM peserta otomatis yang dikeluarkan}
@@ -7282,6 +7359,8 @@ components:
         minggu: {type: integer, description: Nomor minggu kalender}
         mulai: {type: string, format: date-time}
         di_luar_blok: {type: boolean, description: "Minggu di luar rentang minggu_mulai–minggu_selesai kelas yang tetap tampil karena sudah berisi"}
+        dibuka: {type: string, format: date-time, description: "00.00 WIB hari asinkron kelas pada minggu ini"}
+        terkunci: {type: boolean, description: "Peserta: hari itu belum tiba; tautan video, isi, dan berkas materinya dikosongkan"}
         materi: {type: array, items: {$ref: '#/components/schemas/Materi'}}
         kuis: {type: array, items: {$ref: '#/components/schemas/KuisKelas'}}
         tugas: {type: array, items: {$ref: '#/components/schemas/TugasKelas'}}
@@ -7343,6 +7422,45 @@ components:
         peserta_keluar: {type: array, nullable: true, items: {type: string}}
         minggu_mulai: {type: integer, nullable: true, description: "Dikirim bersama minggu_selesai; 0 dan 0 = seluruh minggu kalender"}
         minggu_selesai: {type: integer, nullable: true, description: Tidak boleh melewati jumlah minggu kalender kelas}
+        hari_asinkron: {type: string, nullable: true, enum: [Senin, Selasa, Rabu], description: "Hari asinkron kelas; hari lain ditolak 422. Berlaku langsung. Padanan WhatsApp kaprodi: `hari kelas | <nomor/nama kelas> | <hari>`"}
+    ButirKetepatan:
+      type: object
+      properties:
+        materi_id: {type: string}
+        judul: {type: string}
+        jenis: {type: string, enum: [video, bacaan, berkas]}
+        minggu: {type: integer}
+        dibuka: {type: string, format: date-time, description: 00.00 WIB hari jadwalnya}
+        status: {type: string, enum: [tepat, terlambat, belum, hari_ini, dosen_telat, baru_terdaftar]}
+        tuntas: {type: string, format: date-time, description: Saat materi pertama kali tuntas 100%}
+    BarisKetepatan:
+      type: object
+      properties:
+        nim: {type: string}
+        nama: {type: string}
+        tepat: {type: integer}
+        terlambat: {type: integer}
+        belum: {type: integer}
+        hari_ini: {type: integer, description: Hari jadwalnya hari ini dan belum tuntas}
+        dikecualikan: {type: integer, description: "dosen_telat + baru_terdaftar: tidak menimbulkan catatan"}
+        catatan: {type: array, items: {$ref: '#/components/schemas/ButirKetepatan'}, description: Hanya status terlambat dan belum}
+    MateriKetepatan:
+      type: object
+      properties:
+        materi_id: {type: string}
+        judul: {type: string}
+        minggu: {type: integer}
+        dibuka: {type: string, format: date-time}
+        tersedia: {type: string, format: date-time, description: Saat materi diunggah}
+        dosen_telat: {type: boolean, description: Diunggah pada/sesudah 00.00 hari jadwalnya}
+    KetepatanKelas:
+      type: object
+      properties:
+        kelas_id: {type: string}
+        hari_asinkron: {type: string, enum: [Senin, Selasa, Rabu]}
+        berlaku_sejak: {type: string, format: date-time, description: "Hari jadwal sebelum ini tidak dinilai (5 Okt 2026, minggu 2)"}
+        baris: {type: array, items: {$ref: '#/components/schemas/BarisKetepatan'}}
+        materi: {type: array, items: {$ref: '#/components/schemas/MateriKetepatan'}, description: "Hanya untuk pengajar, kaprodi, dan admin"}
     BobotKelasRequest:
       type: object
       required: [bobot]
@@ -8754,6 +8872,17 @@ components:
         dibuat_oleh:
           type: string
           description: Email kampus pembuat, atau "wa:<nomor>" kalau emailnya kosong
+        dibuat:
+          type: string
+          format: date-time
+          description: Saat materi diunggah (sejak 2026-09-29; materi lama tanpa field ini memakai waktu id-nya) - dasar dosen_telat pada ketepatan belajar
+        terkunci:
+          type: boolean
+          description: Hanya di balasan untuk mahasiswa - hari asinkron kelasnya belum tiba; youtube_id, isi, dan berkas dikosongkan
+        dibuka:
+          type: string
+          format: date-time
+          description: Hanya di balasan untuk mahasiswa - 00.00 WIB hari asinkron kelasnya pada minggu materi
     MateriRequest:
       type: object
       required: [prodi_kode, rumpun_kode, minggu, judul, jenis]
@@ -8855,6 +8984,12 @@ components:
             Keterangan untuk dosen; yang dipakai laporan kepatuhan tetap
             persen_selesai.
           example: 12
+        tuntas_pada:
+          type: string
+          format: date-time
+          description: >-
+            Saat persen_selesai pertama kali mencapai 100 (sejak 2026-09-29) -
+            dasar ketepatan belajar; tidak berubah sesudah terisi.
     CatatProgresRequest:
       type: object
       required: [rumpun_kode, minggu, materi_id, persen_selesai]
