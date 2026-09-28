@@ -22,12 +22,15 @@ info:
     **A. NIM/email + kata sandi** (sejak 2026-09-25): `POST /akun/masuk` dengan
     `{"identitas": "<NIM atau email>", "sandi": "..."}` membalas `LoginInfo`.
     Mahasiswa masuk dengan NIM (atau email roster), dosen dengan email kampus.
-    Kata sandi yang belum pernah diganti adalah **templat**: bagian email sebelum
-    `@` (huruf kecil) + `ADB`; mahasiswa tanpa email: NIM + `ADB`. Kata sandi
-    diganti lewat `PUT /akun/sandi`; admin/kaprodi mereset ke templat lewat
-    `POST /pengguna/sandi/reset`. Percobaan gagal dibatasi 10 per NIM/email dan
-    30 per alamat IP dalam 15 menit (`429`). Akun tanpa nomor WhatsApp dan dosen
-    nonaktif ditolak `403`.
+    **Kata sandi awal berpola (bagian email sebelum `@` + `ADB`) dilarang sejak
+    2026-09-28**: masih diterima untuk mahasiswa sampai 12 Oktober 2026 00.00 WIB
+    (langsung wajib ganti), tidak untuk dosen. Kata sandi wajib kuat (minimal 12
+    karakter, huruf kecil, huruf besar, angka, simbol, tanpa NIM/email/nama);
+    `LoginInfo.wajib_ganti` menandai kata sandi awal, sementara, atau belum kuat.
+    Kata sandi dibuat/diganti lewat `PUT /akun/sandi`; admin/kaprodi mereset
+    lewat `POST /pengguna/sandi/reset` (kata sandi sementara acak). Percobaan
+    gagal dibatasi 10 per NIM/email dan 30 per alamat IP dalam 15 menit (`429`).
+    Akun tanpa nomor WhatsApp dan dosen nonaktif ditolak `403`.
 
     **B. WhatsAuth** (nomor WhatsApp dibuktikan lewat pesan ke bot):
 
@@ -5486,10 +5489,13 @@ paths:
         kata sandi menjadi token 18 jam yang sama dengan WhatsAuth: Id = nomor
         WhatsApp di data pengguna (mahasiswa yang belum punya nomor di roster:
         `nim:<NIM>`, sejak 2026-09-26), role dari basis data. Email dicari di dosen
-        lebih dulu, lalu di roster; tidak peka huruf besar/kecil. Kata sandi yang
-        belum pernah diganti = templat (bagian email sebelum @ + ADB; mahasiswa
-        tanpa email NIM + ADB). Akun tidak ditemukan dan kata sandi salah dijawab
-        sama (`401`). Dipakai tab **Kata sandi** halaman login.
+        lebih dulu, lalu di roster; tidak peka huruf besar/kecil. Kata sandi awal
+        berpola (bagian email sebelum @ + ADB; mahasiswa tanpa email NIM + ADB)
+        hanya diterima untuk mahasiswa sampai 12 Oktober 2026 (sejak 2026-09-28).
+        `wajib_ganti` true bila masuk dengan kata sandi awal, kata sandi sementara
+        hasil reset, atau kata sandi yang belum kuat — halaman login lalu
+        mengarahkan ke Ganti Kata Sandi. Akun tidak ditemukan dan kata sandi salah
+        dijawab sama (`401`). Dipakai tab **Kata sandi** halaman login.
       operationId: masukSandi
       requestBody:
         required: true
@@ -5536,8 +5542,10 @@ paths:
       summary: Status kata sandi pemilik token
       description: >-
         Identitas yang dipakai untuk masuk (NIM atau email kampus), apakah kata
-        sandinya masih templat, dan apakah akun ini bisa masuk dengan kata sandi
-        (dosen tanpa email kampus belum bisa). Dipakai halaman Ganti Kata Sandi.
+        sandinya wajib diganti (kata sandi awal selama peralihan atau kata sandi
+        sementara), apakah kata sandi lama perlu disebut saat mengganti, apakah
+        akun sudah punya nomor WhatsApp, dan apakah akun ini bisa masuk dengan
+        kata sandi. Dipakai halaman Ganti Kata Sandi.
       operationId: statusSandi
       responses:
         '200':
@@ -5565,11 +5573,15 @@ paths:
         - akun
       summary: Ganti kata sandi sendiri
       description: >-
-        Mengganti kata sandi pemilik token setelah kata sandi lamanya (templat atau
-        yang tersimpan) terbukti. Kata sandi baru 8-128 karakter dan tidak sama
-        dengan templat. Disimpan sebagai hash argon2id di koleksi `katasandi`;
-        templat berhenti berlaku. Percobaan dengan kata sandi lama yang salah
-        dibatasi seperti halaman masuk.
+        Membuat atau mengganti kata sandi pemilik token. Kata sandi baru wajib
+        kuat: 12-128 karakter, memuat huruf kecil, huruf besar, angka, dan simbol,
+        tidak memuat NIM/email/nama pemilik, tanpa karakter sama 4 kali
+        berturut-turut, dan tidak sama dengan kata sandi awal atau sementara.
+        `sandi_lama` wajib kalau akun punya kata sandi yang bisa dipakai
+        (tersimpan, atau kata sandi awal selama peralihan); akun yang belum punya
+        kata sandi (masuk lewat WhatsApp) boleh mengosongkannya. Disimpan sebagai
+        hash argon2id di koleksi `katasandi`. Percobaan dengan kata sandi lama
+        yang salah dibatasi seperti halaman masuk.
       operationId: gantiSandi
       requestBody:
         required: true
@@ -5603,13 +5615,59 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '422':
-          description: Kata sandi baru terlalu pendek/panjang atau sama dengan templat
+          description: Kata sandi baru belum kuat, atau sama dengan kata sandi awal/sementara
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DetailError'
         '429':
           description: Terlalu banyak percobaan kata sandi lama yang salah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+      security:
+        - whatsauthToken: []
+  /akun/wa/kode:
+    post:
+      tags:
+        - akun
+      summary: Kode sekali pakai untuk menghubungkan nomor WhatsApp (mahasiswa)
+      description: >-
+        Untuk mahasiswa pemilik token yang belum punya nomor WhatsApp di roster
+        (sejak 2026-09-28). Membalas kode 8 huruf (berlaku 15 menit, sekali pakai;
+        kode lama NIM itu batal) dan tautan wa.me ke bot dengan pesan
+        `hubungkan wa | KODE` terisi. Nomor baru terhubung saat pesan itu dikirim
+        dari nomor tersebut, jadi kepemilikan nomornya dibuktikan WhatsApp; nomor
+        dosen dan nomor milik NIM lain ditolak bot.
+      operationId: kodeHubungkanWA
+      responses:
+        '200':
+          description: Kode terbit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KodeHubungkanWAResponse'
+        '401':
+          description: Token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '403':
+          description: Nomor token bukan dosen aktif maupun mahasiswa roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '409':
+          description: Akun sudah punya nomor WhatsApp
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '422':
+          description: Pemilik token dosen (nomor dosen diatur di halaman Pengguna)
           content:
             application/json:
               schema:
@@ -5983,12 +6041,16 @@ paths:
     post:
       tags:
         - pengguna
-      summary: Reset kata sandi ke templat (admin, kaprodi)
+      summary: Reset kata sandi menjadi kata sandi sementara acak (admin, kaprodi)
       description: >-
-        Menghapus kata sandi yang sudah diganti sehingga templat berlaku lagi, dan
-        membersihkan hitungan percobaan gagal akun itu. Admin: siapa pun. Kaprodi:
-        mahasiswa prodinya dan dosen yang mengajar di prodinya, kecuali admin dan
-        kaprodi.
+        Sejak 2026-09-28 membuat kata sandi sementara acak yang kuat (mis.
+        `k7Qm-9xTr-2Lpw`), disimpan hanya sebagai hash bertanda sementara, dan
+        membersihkan hitungan percobaan gagal akun itu. Kata sandinya dibalas
+        sekali kepada pereset; bila pemilik akun punya nomor WhatsApp, bot juga
+        mengirimkannya ke sana (`terkirim_wa`). Pemiliknya wajib menggantinya
+        setelah masuk. Admin: siapa pun. Kaprodi: mahasiswa prodinya dan dosen
+        yang mengajar di prodinya, kecuali admin dan kaprodi. Padanan WhatsApp:
+        `reset sandi | NIM/email`.
       operationId: resetSandi
       requestBody:
         required: true
@@ -5998,19 +6060,11 @@ paths:
               $ref: '#/components/schemas/ResetSandiRequest'
       responses:
         '200':
-          description: Kata sandi kembali ke templat
+          description: Kata sandi sementara terbit
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  ok:
-                    type: boolean
-                  identitas:
-                    type: string
-                  templat_bisa_dipakai:
-                    type: boolean
-                    description: false kalau akun belum punya templat (dosen tanpa email)
+                $ref: '#/components/schemas/HasilResetSandi'
         '401':
           description: Token tidak sah
           content:
@@ -7024,6 +7078,11 @@ components:
         login:
           type: string
           description: Token PASETO v4.public, berlaku 18 jam
+        wajib_ganti:
+          type: boolean
+          description: Hanya `POST /akun/masuk`. true bila masuk dengan kata sandi awal, kata sandi sementara, atau kata sandi yang belum kuat
+        alasan_ganti:
+          type: string
     DetailError:
       description: Bentuk error khusus modul Portal Tugas & Kurikulum (beda dari ErrorMessage yang dipakai modul WhatsAuth)
       type: object
@@ -9225,12 +9284,54 @@ components:
           description: NIM atau email kampus untuk masuk
         templat:
           type: boolean
-          description: true = masih kata sandi templat
+          description: true = belum punya kata sandi tersimpan (buatan sendiri atau sementara)
         bisa_masuk:
           type: boolean
         alasan:
           type: string
           description: Diisi kalau bisa_masuk false
+        wajib_ganti:
+          type: boolean
+          description: Masih kata sandi awal (peralihan) atau kata sandi sementara hasil reset
+        alasan_ganti:
+          type: string
+        perlu_sandi_lama:
+          type: boolean
+          description: false = akun belum punya kata sandi yang bisa dipakai; kata sandi pertama dibuat tanpa kata sandi lama
+        nomor_wa:
+          type: boolean
+          description: Akun sudah punya nomor WhatsApp (bisa masuk lewat WhatsApp)
+    HasilResetSandi:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        nama:
+          type: string
+        identitas:
+          type: string
+          description: NIM atau email kampus untuk masuk
+        sandi_sementara:
+          type: string
+          description: Kata sandi sementara acak; hanya dibalas sekali
+        terkirim_wa:
+          type: boolean
+          description: Bot juga mengirimkannya ke WhatsApp pemilik akun
+    KodeHubungkanWAResponse:
+      type: object
+      properties:
+        kode:
+          type: string
+          example: K7QM9XTR
+        pesan:
+          type: string
+          example: hubungkan wa | K7QM9XTR
+        tautan:
+          type: string
+          description: wa.me ke nomor bot dengan pesan terisi
+        berlaku_menit:
+          type: integer
+          example: 15
     ResetSandiRequest:
       type: object
       required:
