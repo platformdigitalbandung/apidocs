@@ -5606,9 +5606,10 @@ paths:
         kuat: 12-128 karakter, memuat huruf kecil, huruf besar, angka, dan simbol,
         tidak memuat NIM/email/nama pemilik, tanpa karakter sama 4 kali
         berturut-turut, dan tidak sama dengan kata sandi awal atau sementara.
-        `sandi_lama` wajib kalau akun punya kata sandi yang bisa dipakai
-        (tersimpan, atau kata sandi awal selama peralihan); akun yang belum punya
-        kata sandi (masuk lewat WhatsApp) boleh mengosongkannya. Disimpan sebagai
+        `sandi_lama` hanya wajib kalau akun punya kata sandi tersimpan (buatan
+        sendiri atau sementara hasil reset); akun yang masih memakai kata sandi
+        awal atau belum punya kata sandi (masuk lewat WhatsApp) boleh
+        mengosongkannya (sejak 2026-09-29). Disimpan sebagai
         hash argon2id di koleksi `katasandi`. Percobaan dengan kata sandi lama
         yang salah dibatasi seperti halaman masuk.
       operationId: gantiSandi
@@ -9432,7 +9433,7 @@ components:
           type: string
         perlu_sandi_lama:
           type: boolean
-          description: false = akun belum punya kata sandi yang bisa dipakai; kata sandi pertama dibuat tanpa kata sandi lama
+          description: true hanya bila akun punya kata sandi tersimpan; false = kata sandi dibuat tanpa kata sandi lama (akun masih kata sandi awal atau belum punya)
         nomor_wa:
           type: boolean
           description: Akun sudah punya nomor WhatsApp (bisa masuk lewat WhatsApp)
